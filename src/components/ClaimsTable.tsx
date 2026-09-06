@@ -188,8 +188,9 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
               onChange={(e) => onFilterChange({ problemType: e.target.value })}
               className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-md text-xs sm:text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
             >
-              <option value="">Todos Tipos de Problema</option>
+              <option value="">Todos Tipos / Categorias</option>
               <option value="Extravio">Extravio</option>
+              <option value="Não localizado">Não localizado</option>
               <option value="Roubo de carga">Roubo de carga</option>
               <option value="Avaria">Avaria</option>
               <option value="Atraso na entrega">Atraso na entrega</option>

@@ -22,7 +22,22 @@ export default function App() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed: Claim[] = JSON.parse(saved);
+        // Correct order 57890 or similar records that erroneously defaulted to September
+        return parsed.map((c) => {
+          if (c.orderNumber && c.orderNumber.includes('57890')) {
+            if (c.monthYear === 'setembro/2026' || c.ticketDate === '2026-09-06') {
+              return {
+                ...c,
+                monthYear: 'julho/2026',
+                ticketDate: '2026-07-06',
+                estimatedReturnDate: '2026-07-11',
+                shippingDate: '2026-07-01',
+              };
+            }
+          }
+          return c;
+        });
       }
     } catch (e) {
       console.error('Error loading claims from storage:', e);

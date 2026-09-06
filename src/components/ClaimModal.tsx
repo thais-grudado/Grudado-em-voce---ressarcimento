@@ -24,6 +24,7 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
   const [shippingDate, setShippingDate] = useState('');
   const [amount, setAmount] = useState<string>('');
   const [ticketDate, setTicketDate] = useState('');
+  const [monthYear, setMonthYear] = useState('');
   const [problemType, setProblemType] = useState<ProblemType>('Extravio');
   const [slaDays, setSlaDays] = useState<number>(5);
   const [estimatedReturnDate, setEstimatedReturnDate] = useState('');
@@ -42,6 +43,7 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
       setShippingDate(editClaim.shippingDate || '');
       setAmount(editClaim.amount ? editClaim.amount.toString() : '');
       setTicketDate(editClaim.ticketDate);
+      setMonthYear(editClaim.monthYear || getMonthYearFromDate(editClaim.ticketDate) || '');
       setProblemType(editClaim.problemType);
       setSlaDays(editClaim.slaDays);
       setEstimatedReturnDate(editClaim.estimatedReturnDate);
@@ -51,14 +53,15 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
       setNotes(editClaim.notes || '');
     } else {
       // Defaults for new claim
-      const today = '2026-09-06';
+      const today = new Date().toISOString().split('T')[0];
       setOrderNumber('');
       setTrackingCode('');
-      setCarrier('Jadlog');
+      setCarrier('Correios');
       setInvoiceNumber('');
-      setShippingDate('2026-09-01');
+      setShippingDate('');
       setAmount('');
       setTicketDate(today);
+      setMonthYear(getMonthYearFromDate(today) || '');
       setProblemType('Extravio');
       setSlaDays(5);
       setEstimatedReturnDate(addDaysToDate(today, 5));
@@ -72,8 +75,12 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
   // Recalculate estimated return date when ticketDate or slaDays changes
   const handleTicketDateChange = (val: string) => {
     setTicketDate(val);
-    if (val && slaDays) {
-      setEstimatedReturnDate(addDaysToDate(val, slaDays));
+    if (val) {
+      const computedMonth = getMonthYearFromDate(val);
+      if (computedMonth) setMonthYear(computedMonth);
+      if (slaDays) {
+        setEstimatedReturnDate(addDaysToDate(val, slaDays));
+      }
     }
   };
 
@@ -102,7 +109,7 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
     }
 
     const parsedAmount = parseFloat(amount.replace(',', '.')) || 0;
-    const monthYear = getMonthYearFromDate(ticketDate) || 'setembro/2026';
+    const finalMonthYear = monthYear.trim() || getMonthYearFromDate(ticketDate) || 'julho/2026';
 
     onSave(
       {
@@ -118,7 +125,7 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
         estimatedReturnDate: estimatedReturnDate || addDaysToDate(ticketDate, slaDays),
         resolution,
         refundStatus,
-        monthYear,
+        monthYear: finalMonthYear,
         protocolNumber: protocolNumber.trim(),
         notes: notes.trim(),
       },
@@ -278,11 +285,11 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
             </div>
           </div>
 
-          {/* Row 4: Abertura Chamado, SLA dias, Previsão Retorno */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+          {/* Row 4: Abertura Chamado, SLA dias, Previsão Retorno, Mês Referência */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1">
-                Data Abertura
+                Data Abertura *
               </label>
               <input
                 type="date"
@@ -290,6 +297,19 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
                 value={ticketDate}
                 onChange={(e) => handleTicketDateChange(e.target.value)}
                 className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">
+                Mês Referência
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: julho/2026"
+                value={monthYear}
+                onChange={(e) => setMonthYear(e.target.value)}
+                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
 

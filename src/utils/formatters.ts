@@ -80,14 +80,15 @@ export function getMonthYearFromDate(dateStr: string): string {
  */
 export function computeSLAStatus(
   claim: Claim,
-  refDateStr: string = '2026-09-06'
+  refDateStr?: string
 ): { status: SLAStatus; label: string; daysDiff: number; badgeColor: string } {
-  if (claim.resolution === 'Sim' || claim.refundStatus === 'Pago' || claim.refundStatus === 'Negado') {
+  // Only officially paid or denied claims are completed; pending refunds still have SLA tracking
+  if (claim.refundStatus === 'Pago' || claim.refundStatus === 'Negado') {
     return {
       status: 'completed',
       label: 'Finalizado',
       daysDiff: 0,
-      badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      badgeColor: 'bg-[#8EDD65]/20 text-[#253746] border border-[#8EDD65]/40 font-semibold',
     };
   }
 
@@ -101,7 +102,7 @@ export function computeSLAStatus(
   }
 
   const estISO = parseDateBRToISO(claim.estimatedReturnDate);
-  const refISO = parseDateBRToISO(refDateStr);
+  const refISO = refDateStr ? parseDateBRToISO(refDateStr) : new Date().toISOString().split('T')[0];
 
   const [ey, em, ed] = estISO.split('-').map(Number);
   const [ry, rm, rd] = refISO.split('-').map(Number);
@@ -118,21 +119,21 @@ export function computeSLAStatus(
       status: 'overdue',
       label: `Vencido há ${daysLate} ${daysLate === 1 ? 'dia' : 'dias'}`,
       daysDiff: diffDays,
-      badgeColor: 'bg-rose-50 text-rose-700 border-rose-200 animate-pulse',
+      badgeColor: 'bg-[#EF426F]/15 text-[#EF426F] border border-[#EF426F]/30 font-bold',
     };
   } else if (diffDays === 0) {
     return {
       status: 'due_today',
       label: 'Vence Hoje',
       daysDiff: 0,
-      badgeColor: 'bg-amber-50 text-amber-700 border-amber-300 font-semibold',
+      badgeColor: 'bg-[#FF6A39]/20 text-[#FF6A39] border border-[#FF6A39]/40 font-bold',
     };
   } else {
     return {
       status: 'on_track',
       label: `No prazo (${diffDays} ${diffDays === 1 ? 'dia' : 'dias'})`,
       daysDiff: diffDays,
-      badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
+      badgeColor: 'bg-[#05C3DE]/15 text-[#253746] border border-[#05C3DE]/30 font-medium',
     };
   }
 }
