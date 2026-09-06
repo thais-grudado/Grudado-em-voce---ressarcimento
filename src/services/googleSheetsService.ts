@@ -155,6 +155,27 @@ const PT_MONTHS_NAMES = [
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
 ];
 
+export function normalizeCarrierName(raw: string | undefined | null): CarrierName {
+  if (!raw) return 'Correios';
+  const clean = raw.trim().toLowerCase();
+  if (clean.includes('j&t') || clean.includes('jet') || clean.includes('jt') || clean === 'j e t' || clean.includes('j&t express')) {
+    return 'J&T';
+  }
+  if (clean.includes('correio') || clean.includes('sedex') || clean.includes('pac')) {
+    return 'Correios';
+  }
+  if (clean.includes('jadlog') || clean.includes('jad')) {
+    return 'Jadlog';
+  }
+  if (clean.includes('total') || clean.includes('tex')) {
+    return 'Total Express';
+  }
+  if (clean.includes('loggi')) {
+    return 'Loggi';
+  }
+  return 'Outros';
+}
+
 /**
  * Normalizes date string into YYYY-MM-DD, with support for:
  * - DD/MM/YYYY, DD/MM/YY
@@ -299,7 +320,26 @@ export function parseClaimsFromCSV(csvText: string): ParseResult {
     };
   }
 
-  const headerRow = rows[0];
+  // 1. Detect header row index (some sheets have title rows on row 0 or 1)
+  let headerRowIndex = 0;
+  let maxHeaderMatches = 0;
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    const rJoined = rows[i].map(normalizeHeader).join(' ');
+    let matches = 0;
+    if (rJoined.includes('pedido') || rJoined.includes('order')) matches++;
+    if (rJoined.includes('rastreio') || rJoined.includes('objeto') || rJoined.includes('etiqueta')) matches++;
+    if (rJoined.includes('transp') || rJoined.includes('carrier') || rJoined.includes('correio') || rJoined.includes('jet') || rJoined.includes('jt')) matches++;
+    if (rJoined.includes('nf') || rJoined.includes('nota')) matches++;
+    if (rJoined.includes('data') || rJoined.includes('abertura') || rJoined.includes('ocorrencia')) matches++;
+    if (rJoined.includes('valor') || rJoined.includes('total')) matches++;
+    if (rJoined.includes('status') || rJoined.includes('situacao')) matches++;
+    if (matches > maxHeaderMatches) {
+      maxHeaderMatches = matches;
+      headerRowIndex = i;
+    }
+  }
+
+  const headerRow = rows[headerRowIndex];
   const colMap: Record<string, number> = {};
 
   headerRow.forEach((col, idx) => {
@@ -327,43 +367,98 @@ export function parseClaimsFromCSV(csvText: string): ParseResult {
   };
 
   // Map columns by common synonyms used in Brazilian e-commerce & Grudado em Você
-  const monthCol = findCol(['mes', 'mesano', 'competencia', 'periodo', 'mesreferencia', 'mescompetencia']);
-  const orderCol = findCol(['pedido', 'npedido', 'numeropedido', 'numero', 'order', 'ordernumber']);
-  const trackingCol = findCol(['rastreio', 'codigorastreio', 'objeto', 'tracking', 'etiqueta', 'conhecimento']);
-  const carrierCol = findCol(['transportadora', 'carrier', 'empresa', 'envio']);
-  const invoiceCol = findCol(['notafiscal', 'nf', 'nnf', 'numeroanf', 'danfe']);
-  const dateCol = findCol([
+  let monthCol = findCol(['mes', 'mesano', 'competencia', 'periodo', 'mesreferencia', 'mescompetencia']);
+  let orderCol = findCol(['pedido', 'npedido', 'numeropedido', 'numero', 'order', 'ordernumber', 'id', 'venda']);
+  let trackingCol = findCol(['rastreio', 'codigorastreio', 'codrastreio', 'rastreamento', 'objeto', 'tracking', 'etiqueta', 'conhecimento']);
+  let carrierCol = findCol([
+    'correioejet', 'correiosjet', 'correiojet', 'correiosjet', 'correioejt', 'correiojt',
+    'transportadora', 'carrier', 'transp', 'empresa', 'envio', 'correios', 'correio',
+    'jet', 'jt', 'frete', 'logistica', 'operador', 'canal'
+  ]);
+  let invoiceCol = findCol(['notafiscal', 'nf', 'nnf', 'numeroanf', 'numnf', 'danfe', 'nota']);
+  let dateCol = findCol([
     'dataabertura', 'abertura', 'dataocorrencia', 'datasinistro', 'dataregistro',
     'datapedido', 'datapostagem', 'dataenvio', 'datasolicitacao', 'datareclamacao',
-    'dtabertura', 'dtpedido', 'dtenvio', 'dtsolicitacao', 'data', 'dt', 'ticketdate', 'createdat'
+    'dtabertura', 'dtpedido', 'dtenvio', 'dtsolicitacao', 'data', 'dt', 'ticketdate', 'createdat', 'ocorrencia'
   ]);
-  const deadlineCol = findCol(['previsao', 'dataprevisao', 'previsaoretorno', 'dataretorno', 'datalimite', 'prazo', 'prazosla']);
-  const slaCol = findCol(['sladias', 'sla']);
-  const amountCol = findCol(['valor', 'valormercadoria', 'valorpedido', 'valorsolicitado', 'amount', 'total']);
-  const problemCol = findCol(['categoria', 'motivo', 'tipodesinistro', 'ocorrencia', 'problema', 'sinistro', 'problemtype']);
-  const resolutionCol = findCol(['resolucao', 'solucao', 'resolvido', 'resposta', 'deferido']);
-  const statusCol = findCol(['status', 'situacao', 'statusreembolso', 'refundstatus', 'statusressarcimento', 'fase']);
-  const notesCol = findCol(['observacoes', 'observacao', 'notas', 'protocolo', 'obs', 'detalhes']);
+  let deadlineCol = findCol(['previsao', 'dataprevisao', 'previsaoretorno', 'dataretorno', 'datalimite', 'prazo', 'prazosla', 'retorno']);
+  let slaCol = findCol(['sladias', 'sla', 'dias', 'prazodias']);
+  let amountCol = findCol(['valor', 'valormercadoria', 'valorpedido', 'valorsolicitado', 'amount', 'total', 'custo', 'rs']);
+  let problemCol = findCol(['categoria', 'motivo', 'tipodesinistro', 'ocorrencia', 'problema', 'sinistro', 'problemtype', 'avaria', 'sinistrotipo']);
+  let resolutionCol = findCol(['resolucao', 'solucao', 'resolvido', 'resposta', 'deferido', 'procedente']);
+  let statusCol = findCol(['status', 'situacao', 'statusreembolso', 'refundstatus', 'statusressarcimento', 'fase']);
+  let notesCol = findCol(['observacoes', 'observacao', 'notas', 'protocolo', 'obs', 'detalhes']);
+
+  // Content-based discovery for carrierCol if not found by header
+  if (carrierCol === -1) {
+    for (let c = 0; c < (rows[headerRowIndex + 1]?.length || 0); c++) {
+      let isCarrier = false;
+      for (let r = headerRowIndex + 1; r < Math.min(rows.length, headerRowIndex + 15); r++) {
+        const val = (rows[r][c] || '').toLowerCase().trim();
+        if (val.includes('j&t') || val === 'jet' || val === 'jt' || val.includes('correio') || val.includes('jadlog') || val.includes('total') || val.includes('loggi')) {
+          isCarrier = true;
+          break;
+        }
+      }
+      if (isCarrier) {
+        carrierCol = c;
+        break;
+      }
+    }
+  }
+
+  // Positional fallback if Grudado em Você standard layout is used (see Image 2)
+  // Col 0: Pedido | Col 1: Rastreio | Col 2: Transportadora | Col 3: NF | Col 4: Data | Col 5: Valor | Col 6: Previsão | Col 7: Motivo | Col 8: SLA | Col 10: Status | Col 11: Resolução | Col 12: Mês
+  const sampleDataRow = rows[headerRowIndex + 1];
+  if (sampleDataRow && sampleDataRow.length >= 8) {
+    if (orderCol === -1) orderCol = 0;
+    if (trackingCol === -1) trackingCol = 1;
+    if (carrierCol === -1) carrierCol = 2;
+    if (invoiceCol === -1) invoiceCol = 3;
+    if (dateCol === -1) dateCol = 4;
+    if (amountCol === -1) amountCol = 5;
+    if (deadlineCol === -1) deadlineCol = 6;
+    if (problemCol === -1) problemCol = 7;
+    if (slaCol === -1 && sampleDataRow.length > 8) slaCol = 8;
+    if (notesCol === -1 && sampleDataRow.length > 9) notesCol = 9;
+    if (statusCol === -1 && sampleDataRow.length > 10) statusCol = 10;
+    if (resolutionCol === -1 && sampleDataRow.length > 11) resolutionCol = 11;
+    if (monthCol === -1 && sampleDataRow.length > 12) monthCol = 12;
+  }
 
   const parsedClaims: Claim[] = [];
   const errors: string[] = [];
 
-  for (let r = 1; r < rows.length; r++) {
+  for (let r = headerRowIndex + 1; r < rows.length; r++) {
     const row = rows[r];
     if (row.length === 0 || row.every(c => c === '')) continue;
 
     try {
-      const orderNumber = orderCol !== -1 && row[orderCol] ? row[orderCol].trim() : `PED-${Math.floor(10000 + Math.random() * 90000)}`;
-      const trackingCode = trackingCol !== -1 && row[trackingCol] ? row[trackingCol].trim() : `BR${Math.floor(100000000 + Math.random() * 900000000)}GV`;
-      const carrierRaw = carrierCol !== -1 && row[carrierCol] ? row[carrierCol].trim() : 'Correios';
-      const invoiceNumber = invoiceCol !== -1 && row[invoiceCol] ? row[invoiceCol].trim() : `${Math.floor(10000 + Math.random() * 90000)}`;
+      const orderNumber = orderCol !== -1 && row[orderCol] ? row[orderCol].trim() : `PED-${r}`;
+      const trackingCode = trackingCol !== -1 && row[trackingCol] ? row[trackingCol].trim() : '';
+      const carrierRaw = carrierCol !== -1 && row[carrierCol] ? row[carrierCol].trim() : '';
+      const carrier = normalizeCarrierName(carrierRaw);
+      const invoiceNumber = invoiceCol !== -1 && row[invoiceCol] ? row[invoiceCol].trim() : '';
       
       const rawDate = dateCol !== -1 ? row[dateCol] : undefined;
       const rawMonth = monthCol !== -1 ? row[monthCol] : undefined;
       const { ticketDate, monthYear } = parseDateAndMonth(rawDate, rawMonth);
 
-      const amount = amountCol !== -1 ? parseCurrency(row[amountCol]) : 150.0;
-      const problemRaw = problemCol !== -1 && row[problemCol] ? row[problemCol].trim() : 'Extravio';
+      const amount = amountCol !== -1 ? parseCurrency(row[amountCol]) : 50.0;
+      
+      // Normalize problem type
+      let problemRaw: ProblemType = 'Extravio';
+      if (problemCol !== -1 && row[problemCol]) {
+        const pClean = row[problemCol].trim().toLowerCase();
+        if (pClean.includes('avaria')) problemRaw = 'Avaria';
+        else if (pClean.includes('localizado')) problemRaw = 'Não localizado';
+        else if (pClean.includes('roubo')) problemRaw = 'Roubo de carga';
+        else if (pClean.includes('atraso')) problemRaw = 'Atraso na entrega';
+        else if (pClean.includes('trocado')) problemRaw = 'Pedido trocado em trânsito';
+        else if (pClean.includes('insucesso')) problemRaw = 'Insucesso indevido de entrega';
+        else if (pClean.includes('extravio')) problemRaw = 'Extravio';
+        else problemRaw = row[problemCol].trim() as ProblemType;
+      }
       
       // Calculate SLA & Estimated Return Date
       let slaDays = slaCol !== -1 && row[slaCol] ? parseInt(row[slaCol], 10) || 5 : 5;
@@ -416,12 +511,12 @@ export function parseClaimsFromCSV(csvText: string): ParseResult {
         id: `claim-gs-${Date.now()}-${r}`,
         orderNumber,
         trackingCode,
-        carrier: carrierRaw as CarrierName,
+        carrier,
         invoiceNumber,
         shippingDate: ticketDate,
-        amount: amount > 0 ? amount : 100.0,
+        amount: amount > 0 ? amount : 50.0,
         ticketDate,
-        problemType: problemRaw as ProblemType,
+        problemType: problemRaw,
         slaDays,
         estimatedReturnDate,
         resolution,
@@ -441,7 +536,7 @@ export function parseClaimsFromCSV(csvText: string): ParseResult {
   return {
     claims: parsedClaims,
     errors,
-    totalRows: rows.length - 1,
+    totalRows: rows.length - (headerRowIndex + 1),
     importedCount: parsedClaims.length,
   };
 }

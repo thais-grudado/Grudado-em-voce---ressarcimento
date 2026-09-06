@@ -201,6 +201,25 @@ export const INITIAL_CLAIMS: Claim[] = [
     createdAt: '2026-07-10T10:00:00.000Z',
     updatedAt: '2026-07-10T10:00:00.000Z',
   },
+  {
+    id: 'claim-12',
+    orderNumber: '61076',
+    trackingCode: '888030881344028',
+    carrier: 'J&T',
+    invoiceNumber: '23655',
+    shippingDate: '2026-08-19',
+    amount: 45.49,
+    ticketDate: '2026-08-19',
+    problemType: 'Avaria',
+    slaDays: 5,
+    estimatedReturnDate: '2026-08-26',
+    resolution: 'Sim',
+    refundStatus: 'Pendente',
+    monthYear: 'agosto/2026',
+    notes: 'Ocorrência de avaria registrada junto à transportadora J&T.',
+    createdAt: '2026-08-19T10:00:00.000Z',
+    updatedAt: '2026-08-19T10:00:00.000Z',
+  },
 ];
 
 export const PROBLEM_TYPES: string[] = [

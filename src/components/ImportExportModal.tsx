@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { X, Download, RotateCcw, FileSpreadsheet, Check } from 'lucide-react';
-import { Claim } from '../types';
+import { Claim, CarrierName, ProblemType, ResolutionStatus, RefundStatus } from '../types';
 import { exportClaimsToCSV, parseDateBRToISO, getMonthYearFromDate, addDaysToDate } from '../utils/formatters';
+import { normalizeCarrierName } from '../services/googleSheetsService';
 
 interface ImportExportModalProps {
   isOpen: boolean;
@@ -47,18 +48,72 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         if (parts.length >= 2) {
           const orderNum = parts[0]?.replace(/"/g, '').trim() || String(Date.now() + idx);
           const tracking = parts[1]?.replace(/"/g, '').trim() || '';
-          const carrier = parts[2]?.replace(/"/g, '').trim() || 'Jadlog';
+          const carrier = normalizeCarrierName(parts[2]?.replace(/"/g, '').trim());
           const invoice = parts[3]?.replace(/"/g, '').trim() || '';
-          const shipDate = parseDateBRToISO(parts[4]?.replace(/"/g, '').trim()) || '2026-09-01';
+          
+          // In Grudado em Você spreadsheet:
+          // parts[4] = Data Abertura / Ocorrência (ex: 19/08/2026)
+          // parts[5] = Valor (ex: 45,49)
+          // parts[6] = Previsão de Retorno (ex: 26/08/2026)
+          // parts[7] = Motivo / Categoria (ex: Avaria)
+          // parts[8] = SLA Dias (ex: 5)
+          // parts[9] = Observações / Vazio
+          // parts[10] = Status (ex: Em análise / Pendente / Pago)
+          // parts[11] = Resolução (ex: Sim / Não)
+          // parts[12] = Mês (ex: 08/2026)
+          const ticketDate = parseDateBRToISO(parts[4]?.replace(/"/g, '').trim()) || new Date().toISOString().split('T')[0];
           const rawAmount = parts[5]?.replace(/"/g, '').replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
           const amount = parseFloat(rawAmount) || 50;
-          const ticketDate = parseDateBRToISO(parts[6]?.replace(/"/g, '').trim()) || '2026-09-06';
-          const problem = parts[7]?.replace(/"/g, '').trim() || 'Extravio';
+          
+          let estReturn = parseDateBRToISO(parts[6]?.replace(/"/g, '').trim());
+          const rawProblem = parts[7]?.replace(/"/g, '').trim() || 'Extravio';
+          let problem: ProblemType = 'Extravio';
+          const pLower = rawProblem.toLowerCase();
+          if (pLower.includes('avaria')) problem = 'Avaria';
+          else if (pLower.includes('localizado')) problem = 'Não localizado';
+          else if (pLower.includes('roubo')) problem = 'Roubo de carga';
+          else if (pLower.includes('atraso')) problem = 'Atraso na entrega';
+          else if (pLower.includes('trocado')) problem = 'Pedido trocado em trânsito';
+          else if (pLower.includes('insucesso')) problem = 'Insucesso indevido de entrega';
+          else if (pLower.includes('extravio')) problem = 'Extravio';
+          else problem = rawProblem as ProblemType;
+
           const slaDays = parseInt(parts[8]?.replace(/"/g, '').trim(), 10) || 5;
-          const estReturn = parseDateBRToISO(parts[9]?.replace(/"/g, '').trim()) || addDaysToDate(ticketDate, slaDays);
-          const resolution = (parts[10]?.replace(/"/g, '').trim() || 'Em análise') as any;
-          const refundStatus = (parts[11]?.replace(/"/g, '').trim() || 'Pendente') as any;
-          const monthYear = parts[12]?.replace(/"/g, '').trim() || getMonthYearFromDate(ticketDate);
+          if (!estReturn) {
+            estReturn = addDaysToDate(ticketDate, slaDays);
+          }
+
+          // parts[10] = status de ressarcimento
+          const rawStatus = (parts[10]?.replace(/"/g, '').trim().toLowerCase() || 'pendente');
+          let refundStatus: RefundStatus = 'Pendente';
+          if (rawStatus.includes('pago') || rawStatus.includes('ressarcido') || rawStatus.includes('aprovado')) {
+            refundStatus = 'Pago';
+          } else if (rawStatus.includes('negado') || rawStatus.includes('recusado') || rawStatus.includes('indeferido')) {
+            refundStatus = 'Negado';
+          }
+
+          // parts[11] = resolução
+          const rawRes = (parts[11]?.replace(/"/g, '').trim().toLowerCase() || '');
+          let resolution: ResolutionStatus = 'Em análise';
+          if (rawRes === 'sim' || rawRes === 's' || rawRes === 'resolvido' || refundStatus === 'Pago') {
+            resolution = 'Sim';
+          } else if (rawRes === 'nao' || rawRes === 'não' || rawRes === 'n' || refundStatus === 'Negado') {
+            resolution = 'Não';
+          }
+
+          let monthYear = parts[12]?.replace(/"/g, '').trim() || '';
+          if (!monthYear || monthYear.includes('-')) {
+            monthYear = getMonthYearFromDate(ticketDate);
+          } else if (monthYear.includes('/')) {
+            const mParts = monthYear.split('/');
+            if (mParts.length === 2 && !isNaN(Number(mParts[0]))) {
+              const mNum = parseInt(mParts[0], 10);
+              const mNames = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+              const mName = mNames[mNum - 1] || 'agosto';
+              const yVal = mParts[1].length === 2 ? `20${mParts[1]}` : mParts[1];
+              monthYear = `${mName}/${yVal}`;
+            }
+          }
 
           newItems.push({
             id: `imported-${Date.now()}-${idx}`,
@@ -66,14 +121,14 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
             trackingCode: tracking,
             carrier,
             invoiceNumber: invoice,
-            shippingDate: shipDate,
+            shippingDate: ticketDate,
             amount,
             ticketDate,
             problemType: problem,
             slaDays,
             estimatedReturnDate: estReturn,
-            resolution: resolution === 'Sim' || resolution === 'Não' ? resolution : 'Em análise',
-            refundStatus: refundStatus === 'Pago' || refundStatus === 'Negado' ? refundStatus : 'Pendente',
+            resolution,
+            refundStatus,
             monthYear,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),

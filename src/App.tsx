@@ -10,7 +10,7 @@ import { ClaimModal } from './components/ClaimModal';
 import { QuickCobranceModal } from './components/QuickCobranceModal';
 import { ImportExportModal } from './components/ImportExportModal';
 import { GoogleSheetsModal } from './components/GoogleSheetsModal';
-import { fetchGoogleSheetCSV, parseClaimsFromCSV } from './services/googleSheetsService';
+import { fetchGoogleSheetCSV, parseClaimsFromCSV, normalizeCarrierName } from './services/googleSheetsService';
 import { exportClaimsToCSV, computeSLAStatus } from './utils/formatters';
 
 const STORAGE_KEY = 'grudado_em_voce_ressarcimentos_v1';
@@ -23,18 +23,48 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed: Claim[] = JSON.parse(saved);
-        // Correct order 57890 or similar records that erroneously defaulted to September
+        // Correct order 61076, 57890 or similar records with real spreadsheet values
         return parsed.map((c) => {
+          if (c.orderNumber && c.orderNumber.includes('61076')) {
+            return {
+              ...c,
+              orderNumber: '61076',
+              trackingCode: '888030881344028',
+              carrier: 'J&T',
+              invoiceNumber: '23655',
+              shippingDate: '2026-08-19',
+              ticketDate: '2026-08-19',
+              amount: 45.49,
+              estimatedReturnDate: '2026-08-26',
+              problemType: 'Avaria',
+              slaDays: 5,
+              resolution: 'Sim',
+              refundStatus: 'Pendente',
+              monthYear: 'agosto/2026',
+            };
+          }
           if (c.orderNumber && c.orderNumber.includes('57890')) {
-            if (c.monthYear === 'setembro/2026' || c.ticketDate === '2026-09-06') {
-              return {
-                ...c,
-                monthYear: 'julho/2026',
-                ticketDate: '2026-07-06',
-                estimatedReturnDate: '2026-07-11',
-                shippingDate: '2026-07-01',
-              };
-            }
+            return {
+              ...c,
+              orderNumber: '57890',
+              trackingCode: 'AD604025375BR',
+              carrier: 'Correios',
+              invoiceNumber: '25123',
+              monthYear: 'julho/2026',
+              ticketDate: '2026-07-10',
+              estimatedReturnDate: '2026-07-15',
+              shippingDate: '2026-07-02',
+              problemType: 'Não localizado',
+              amount: 54.48,
+              resolution: 'Sim',
+              refundStatus: 'Pendente',
+            };
+          }
+          if (c.carrier) {
+            return {
+              ...c,
+              carrier: normalizeCarrierName(c.carrier),
+            };
           }
           return c;
         });
