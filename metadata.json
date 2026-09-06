@@ -1,0 +1,6 @@
+{
+  "name": "Gestão de Ressarcimentos - Grudado em Você",
+  "description": "Painel operacional para acompanhamento de chamados e ressarcimentos com transportadoras, controle de SLA e métricas financeiras.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
