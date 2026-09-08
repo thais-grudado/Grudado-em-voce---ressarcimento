@@ -1,14 +1,20 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Plus, 
   Download, 
   Upload, 
   AlertTriangle, 
-  Menu,
-  Sheet,
-  RefreshCw
+  Menu, 
+  Sheet, 
+  RefreshCw,
+  LogOut,
+  KeyRound,
+  ShieldCheck,
+  ChevronDown,
+  Lock
 } from 'lucide-react';
-import { Claim, GoogleSheetConfig } from '../types';
+import { Claim, GoogleSheetConfig, AppUser } from '../types';
+import { getRolePermissions } from '../utils/auth';
 import { GrudadoLogo } from './GrudadoLogo';
 
 interface HeaderProps {
@@ -27,6 +33,9 @@ interface HeaderProps {
   onOpenGoogleSheetsModal?: () => void;
   onQuickSyncSheets?: () => void;
   isSyncingSheets?: boolean;
+  currentUser?: AppUser | null;
+  onLogout?: () => void;
+  onOpenManagePins?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -43,8 +52,26 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenGoogleSheetsModal,
   onQuickSyncSheets,
   isSyncingSheets = false,
+  currentUser,
+  onLogout,
+  onOpenManagePins,
 }) => {
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const isSheetsConnected = Boolean(sheetConfig?.url);
+
+  const permissions = currentUser ? getRolePermissions(currentUser.role) : null;
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-2xs">
@@ -194,33 +221,118 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Exportar</span>
           </button>
 
-          <button
-            id="btn-import-modal"
-            onClick={onImportClick}
-            title="Importar arquivo CSV"
-            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition cursor-pointer"
-          >
-            <Upload className="w-3.5 h-3.5 text-slate-500" />
-            <span>Importar CSV</span>
-          </button>
+          {/* Import CSV - Only for Admin & Operator */}
+          {permissions?.canCreateClaim && (
+            <button
+              id="btn-import-modal"
+              onClick={onImportClick}
+              title="Importar arquivo CSV"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5 text-slate-500" />
+              <span>Importar CSV</span>
+            </button>
+          )}
 
-          {/* New Claim button with Brand Blue */}
-          <button
-            id="btn-new-claim"
-            onClick={onNewClaim}
-            className="inline-flex items-center gap-1.5 bg-[#05C3DE] hover:bg-[#04b0c7] active:bg-[#039eb3] text-[#253746] px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">+ Nova Solicitação</span>
-            <span className="sm:hidden">Novo</span>
-          </button>
+          {/* New Claim button with Brand Blue - Restricted for Viewer */}
+          {permissions?.canCreateClaim ? (
+            <button
+              id="btn-new-claim"
+              onClick={onNewClaim}
+              className="inline-flex items-center gap-1.5 bg-[#05C3DE] hover:bg-[#04b0c7] active:bg-[#039eb3] text-[#253746] px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">+ Nova Solicitação</span>
+              <span className="sm:hidden">Novo</span>
+            </button>
+          ) : (
+            <div 
+              title="Modo Leitura: Apenas administradores e operadores podem cadastrar ocorrências"
+              className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-semibold text-slate-400 select-none cursor-not-allowed"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Modo Consulta</span>
+            </div>
+          )}
 
-          {/* User Avatar with Grudado Brand Colors */}
-          <div 
-            title="Thais - Grudado em Você"
-            className="w-9 h-9 rounded-xl bg-[#253746] border border-white/20 flex items-center justify-center font-extrabold text-[#F9E547] text-xs shrink-0 select-none shadow-xs"
-          >
-            GV
+          {/* User Profile Badge & Dropdown */}
+          <div className="relative" ref={userMenuRef}>
+            <button
+              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              className="flex items-center gap-2 p-1 pl-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl transition cursor-pointer"
+              title="Perfil de acesso e segurança"
+            >
+              <div className="hidden md:flex flex-col items-end text-right pr-1">
+                <span className="text-xs font-bold text-[#253746] line-clamp-1 max-w-[120px]">
+                  {currentUser?.name || 'Grudado em Você'}
+                </span>
+                <span className="text-[10px] font-extrabold uppercase text-[#05C3DE]">
+                  {currentUser?.role === 'admin' ? 'Admin' : (currentUser?.role === 'operator' ? 'Operador' : 'Visualizador')}
+                </span>
+              </div>
+
+              <div 
+                className="w-8 h-8 rounded-xl flex items-center justify-center font-black text-white text-xs shrink-0 select-none shadow-xs"
+                style={{ backgroundColor: currentUser?.color || '#253746' }}
+              >
+                {currentUser?.avatarText || 'GV'}
+              </div>
+
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 mr-1" />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isUserMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 animate-scaleIn">
+                {/* User info card */}
+                <div className="p-3 bg-slate-50 rounded-xl mb-1 border border-slate-100">
+                  <div className="flex items-center gap-2.5 mb-1.5">
+                    <div 
+                      className="w-7 h-7 rounded-lg flex items-center justify-center font-extrabold text-white text-xs shrink-0"
+                      style={{ backgroundColor: currentUser?.color || '#253746' }}
+                    >
+                      {currentUser?.avatarText || 'GV'}
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-[#253746] leading-tight">
+                        {currentUser?.name}
+                      </h4>
+                      <p className="text-[10px] text-slate-500">
+                        {currentUser?.email || currentUser?.roleLabel}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-200 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-[#05C3DE]" />
+                    <span>Perfil: <strong>{currentUser?.roleLabel}</strong></span>
+                  </div>
+                </div>
+
+                {/* Manage PINs Button (Visible for all or admin) */}
+                <button
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    if (onOpenManagePins) onOpenManagePins();
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:text-[#253746] hover:bg-slate-100 rounded-xl transition cursor-pointer flex items-center gap-2.5"
+                >
+                  <KeyRound className="w-4 h-4 text-[#05C3DE]" />
+                  <span>Gerenciar PINs da Equipe</span>
+                </button>
+
+                {/* Logout / Switch User */}
+                <button
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    if (onLogout) onLogout();
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer flex items-center gap-2.5"
+                >
+                  <LogOut className="w-4 h-4 text-rose-500" />
+                  <span>Trocar Perfil / Sair</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

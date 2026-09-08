@@ -104,3 +104,28 @@ export interface ClaimStats {
     count: number;
   }[];
 }
+
+export type UserRole = 'admin' | 'operator' | 'viewer';
+
+export interface AppUser {
+  id: string;
+  name: string;
+  email?: string;
+  role: UserRole;
+  pin: string; // 4 to 6 digit string
+  avatarText: string;
+  color: string;
+  roleLabel: string;
+  description: string;
+}
+
+export interface UserPermissions {
+  canCreateClaim: boolean;
+  canEditClaim: boolean;
+  canDeleteClaim: boolean;
+  canChangeStatus: boolean;
+  canConfigureSheets: boolean;
+  canExportData: boolean;
+  canManagePins: boolean;
+  canResetData: boolean;
+}

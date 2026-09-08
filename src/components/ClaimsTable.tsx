@@ -13,10 +13,12 @@ import {
   Ban,
   Layers,
   Tag,
-  HelpCircle
+  HelpCircle,
+  Lock
 } from 'lucide-react';
-import { Claim, FilterState, ResolutionStatus, RefundStatus } from '../types';
+import { Claim, FilterState, ResolutionStatus, RefundStatus, AppUser } from '../types';
 import { formatBRL, formatDateBR, computeSLAStatus } from '../utils/formatters';
+import { getRolePermissions } from '../utils/auth';
 
 interface ClaimsTableProps {
   claims: Claim[];
@@ -28,6 +30,7 @@ interface ClaimsTableProps {
   onCobranceClick: (claim: Claim) => void;
   onBatchUpdateStatus?: (ids: string[], refundStatus: RefundStatus, resolution: ResolutionStatus) => void;
   onBatchDelete?: (ids: string[]) => void;
+  currentUser?: AppUser | null;
 }
 
 export const ClaimsTable: React.FC<ClaimsTableProps> = ({
@@ -40,9 +43,15 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
   onCobranceClick,
   onBatchUpdateStatus,
   onBatchDelete,
+  currentUser,
 }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const permissions = currentUser ? getRolePermissions(currentUser.role) : null;
+  const canEdit = permissions ? permissions.canEditClaim : true;
+  const canDelete = permissions ? permissions.canDeleteClaim : true;
+  const canChangeStatus = permissions ? permissions.canChangeStatus : true;
 
   // Copy tracking to clipboard
   const handleCopy = (text: string, id: string) => {
@@ -221,50 +230,56 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
               <span>{selectedIds.length === 1 ? 'demanda selecionada' : 'demandas selecionadas'}</span>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  if (onBatchUpdateStatus) {
-                    onBatchUpdateStatus(selectedIds, 'Pago', 'Sim');
-                    setSelectedIds([]);
-                  }
-                }}
-                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-medium transition cursor-pointer"
-              >
-                Marcar como Pago
-              </button>
-              <button
-                onClick={() => {
-                  if (onBatchUpdateStatus) {
-                    onBatchUpdateStatus(selectedIds, 'Pendente', 'Em análise');
-                    setSelectedIds([]);
-                  }
-                }}
-                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-medium transition cursor-pointer"
-              >
-                Marcar Pendente
-              </button>
-              <button
-                onClick={() => {
-                  if (onBatchUpdateStatus) {
-                    onBatchUpdateStatus(selectedIds, 'Não se aplica', 'Em análise');
-                    setSelectedIds([]);
-                  }
-                }}
-                className="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded text-xs font-medium transition cursor-pointer"
-              >
-                Não se aplica
-              </button>
-              <button
-                onClick={() => {
-                  if (onBatchDelete && confirm(`Excluir ${selectedIds.length} solicitações selecionadas?`)) {
-                    onBatchDelete(selectedIds);
-                    setSelectedIds([]);
-                  }
-                }}
-                className="px-2.5 py-1 bg-white border border-rose-300 text-rose-600 hover:bg-rose-50 rounded text-xs font-medium transition cursor-pointer"
-              >
-                Excluir
-              </button>
+              {canChangeStatus && (
+                <>
+                  <button
+                    onClick={() => {
+                      if (onBatchUpdateStatus) {
+                        onBatchUpdateStatus(selectedIds, 'Pago', 'Sim');
+                        setSelectedIds([]);
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-medium transition cursor-pointer"
+                  >
+                    Marcar como Pago
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (onBatchUpdateStatus) {
+                        onBatchUpdateStatus(selectedIds, 'Pendente', 'Em análise');
+                        setSelectedIds([]);
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-medium transition cursor-pointer"
+                  >
+                    Marcar Pendente
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (onBatchUpdateStatus) {
+                        onBatchUpdateStatus(selectedIds, 'Não se aplica', 'Em análise');
+                        setSelectedIds([]);
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded text-xs font-medium transition cursor-pointer"
+                  >
+                    Não se aplica
+                  </button>
+                </>
+              )}
+              {canDelete && (
+                <button
+                  onClick={() => {
+                    if (onBatchDelete && confirm(`Excluir ${selectedIds.length} solicitações selecionadas?`)) {
+                      onBatchDelete(selectedIds);
+                      setSelectedIds([]);
+                    }
+                  }}
+                  className="px-2.5 py-1 bg-white border border-rose-300 text-rose-600 hover:bg-rose-50 rounded text-xs font-medium transition cursor-pointer"
+                >
+                  Excluir
+                </button>
+              )}
               <button
                 onClick={() => setSelectedIds([])}
                 className="text-xs text-blue-700 hover:underline px-1 cursor-pointer"
@@ -432,58 +447,80 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
 
                     {/* Inline Resolution */}
                     <td className="px-5 py-3.5 whitespace-nowrap">
-                      <select
-                        value={claim.resolution}
-                        onChange={(e) => {
-                          const newRes = e.target.value as ResolutionStatus;
-                          const newRefund = newRes === 'Sim' && claim.refundStatus === 'Pendente' 
-                            ? 'Pago' 
-                            : (newRes === 'Não' && claim.refundStatus === 'Pendente' ? 'Negado' : claim.refundStatus);
-                          onUpdateStatus(
-                            claim.id,
-                            newRes,
-                            newRefund
-                          );
-                        }}
-                        className="text-xs font-semibold px-2 py-1 bg-white border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-                      >
-                        <option value="Em análise">Em análise</option>
-                        <option value="Sim">Sim</option>
-                        <option value="Não">Não</option>
-                      </select>
+                      {canChangeStatus ? (
+                        <select
+                          value={claim.resolution}
+                          onChange={(e) => {
+                            const newRes = e.target.value as ResolutionStatus;
+                            const newRefund = newRes === 'Sim' && claim.refundStatus === 'Pendente' 
+                              ? 'Pago' 
+                              : (newRes === 'Não' && claim.refundStatus === 'Pendente' ? 'Negado' : claim.refundStatus);
+                            onUpdateStatus(
+                              claim.id,
+                              newRes,
+                              newRefund
+                            );
+                          }}
+                          className="text-xs font-semibold px-2 py-1 bg-white border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                        >
+                          <option value="Em análise">Em análise</option>
+                          <option value="Sim">Sim</option>
+                          <option value="Não">Não</option>
+                        </select>
+                      ) : (
+                        <span className="inline-block text-xs font-semibold px-2 py-1 bg-slate-100 text-slate-700 rounded border border-slate-200">
+                          {claim.resolution}
+                        </span>
+                      )}
                     </td>
 
                     {/* Inline Status Pill */}
                     <td className="px-5 py-3.5 whitespace-nowrap">
-                      <select
-                        value={claim.refundStatus}
-                        onChange={(e) => {
-                          const newStatus = e.target.value as RefundStatus;
-                          const newResolution: ResolutionStatus =
-                            newStatus === 'Pago' ? 'Sim' :
-                            newStatus === 'Negado' ? 'Não' :
-                            claim.resolution;
-                          onUpdateStatus(
-                            claim.id,
-                            newResolution,
-                            newStatus
-                          );
-                        }}
-                        className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider cursor-pointer border-0 outline-none ${
-                          claim.refundStatus === 'Pago'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : claim.refundStatus === 'Negado'
-                            ? 'bg-rose-100 text-rose-700'
-                            : claim.refundStatus === 'Não se aplica'
-                            ? 'bg-slate-100 text-slate-700 border border-slate-300'
-                            : 'bg-amber-100 text-amber-700'
-                        }`}
-                      >
-                        <option value="Pendente" className="bg-white text-slate-800 font-normal">Pendente</option>
-                        <option value="Pago" className="bg-white text-slate-800 font-normal">Pago</option>
-                        <option value="Negado" className="bg-white text-slate-800 font-normal">Negado</option>
-                        <option value="Não se aplica" className="bg-white text-slate-800 font-normal">Não se aplica</option>
-                      </select>
+                      {canChangeStatus ? (
+                        <select
+                          value={claim.refundStatus}
+                          onChange={(e) => {
+                            const newStatus = e.target.value as RefundStatus;
+                            const newResolution: ResolutionStatus =
+                              newStatus === 'Pago' ? 'Sim' :
+                              newStatus === 'Negado' ? 'Não' :
+                              claim.resolution;
+                            onUpdateStatus(
+                              claim.id,
+                              newResolution,
+                              newStatus
+                            );
+                          }}
+                          className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider cursor-pointer border-0 outline-none ${
+                            claim.refundStatus === 'Pago'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : claim.refundStatus === 'Negado'
+                              ? 'bg-rose-100 text-rose-700'
+                              : claim.refundStatus === 'Não se aplica'
+                              ? 'bg-slate-100 text-slate-700 border border-slate-300'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          <option value="Pendente" className="bg-white text-slate-800 font-normal">Pendente</option>
+                          <option value="Pago" className="bg-white text-slate-800 font-normal">Pago</option>
+                          <option value="Negado" className="bg-white text-slate-800 font-normal">Negado</option>
+                          <option value="Não se aplica" className="bg-white text-slate-800 font-normal">Não se aplica</option>
+                        </select>
+                      ) : (
+                        <span
+                          className={`inline-block px-2.5 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider ${
+                            claim.refundStatus === 'Pago'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : claim.refundStatus === 'Negado'
+                              ? 'bg-rose-100 text-rose-700'
+                              : claim.refundStatus === 'Não se aplica'
+                              ? 'bg-slate-100 text-slate-700 border border-slate-300'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          {claim.refundStatus}
+                        </span>
+                      )}
                     </td>
 
                     {/* Actions Links / Buttons */}
@@ -499,21 +536,25 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
                           <span className="hidden sm:inline">Cobrar</span>
                         </button>
 
-                        <button
-                          onClick={() => onEditClaim(claim)}
-                          title="Editar"
-                          className="p-1 text-slate-400 hover:text-slate-700 transition cursor-pointer"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={() => onEditClaim(claim)}
+                            title="Editar solicitação"
+                            className="p-1 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
-                        <button
-                          onClick={() => onDeleteClaim(claim.id)}
-                          title="Excluir"
-                          className="p-1 text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canDelete && (
+                          <button
+                            onClick={() => onDeleteClaim(claim.id)}
+                            title="Excluir solicitação"
+                            className="p-1 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

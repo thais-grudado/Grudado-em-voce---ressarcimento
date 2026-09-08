@@ -8,9 +8,14 @@ import {
   Clock,
   RotateCcw,
   Sheet,
-  X
+  X,
+  LogOut,
+  KeyRound,
+  ShieldCheck,
+  Lock
 } from 'lucide-react';
-import { FilterState, GoogleSheetConfig } from '../types';
+import { FilterState, GoogleSheetConfig, AppUser } from '../types';
+import { getRolePermissions } from '../utils/auth';
 import { GrudadoLogo } from './GrudadoLogo';
 
 interface SidebarProps {
@@ -27,6 +32,9 @@ interface SidebarProps {
   onCloseMobile: () => void;
   sheetConfig?: GoogleSheetConfig;
   onOpenGoogleSheetsModal: () => void;
+  currentUser?: AppUser | null;
+  onLogout?: () => void;
+  onOpenManagePins?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -43,8 +51,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   sheetConfig,
   onOpenGoogleSheetsModal,
+  currentUser,
+  onLogout,
+  onOpenManagePins,
 }) => {
   const isSheetsConnected = Boolean(sheetConfig?.url);
+  const permissions = currentUser ? getRolePermissions(currentUser.role) : null;
 
   return (
     <>
@@ -256,36 +268,65 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </span>
             </button>
 
-            <div className="pt-3 mt-3 border-t border-white/10">
-              <button
-                onClick={onResetData}
-                className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-xl text-xs font-medium text-slate-400 hover:text-white transition cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Restaurar Chamados Originais</span>
-              </button>
-            </div>
+            {/* Reset data button - only for Admin */}
+            {permissions?.canResetData && (
+              <div className="pt-3 mt-3 border-t border-white/10">
+                <button
+                  onClick={onResetData}
+                  className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-xl text-xs font-medium text-slate-400 hover:text-white transition cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Restaurar Chamados Originais</span>
+                </button>
+              </div>
+            )}
           </nav>
         </div>
 
-        {/* User / Meta Info Footer with Grudado em Você Colors */}
-        <div className="mt-auto p-5 border-t border-white/10 text-xs text-slate-300 space-y-1 bg-black/10">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-2 h-2 rounded-full bg-[#8EDD65] inline-block" />
-            <span className="font-bold text-white text-[11px] uppercase tracking-wider">
-              Painel Operacional
-            </span>
+        {/* User / Access Profile Footer */}
+        <div className="mt-auto p-4 border-t border-white/10 text-xs text-slate-300 space-y-2.5 bg-black/20">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center font-black text-white text-xs shrink-0"
+                style={{ backgroundColor: currentUser?.color || '#05C3DE' }}
+              >
+                {currentUser?.avatarText || 'GV'}
+              </div>
+              <div className="leading-tight">
+                <p className="font-bold text-white text-xs line-clamp-1">
+                  {currentUser?.name || 'Usuário'}
+                </p>
+                <span className="text-[10px] text-[#05C3DE] font-semibold uppercase">
+                  {currentUser?.roleLabel || 'Painel Operacional'}
+                </span>
+              </div>
+            </div>
           </div>
-          <p className="truncate text-slate-300">
-            <strong className="text-white">Usuário:</strong> thais@grudadoemvoce.com.br
-          </p>
-          <div className="flex items-center gap-1 text-[11px] text-slate-400 pt-1">
-            <span>Paleta:</span>
-            <span className="w-2.5 h-2.5 rounded-full bg-[#F9E547]" title="Amarelo #F9E547" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[#8EDD65]" title="Verde #8EDD65" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[#EF426F]" title="Rosa #EF426F" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[#05C3DE]" title="Azul Claro #05C3DE" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[#FF6A39]" title="Laranja #FF6A39" />
+
+          {/* Quick Actions in Sidebar Footer */}
+          <div className="pt-1 flex items-center gap-1.5 border-t border-white/10">
+            {onOpenManagePins && (
+              <button
+                onClick={onOpenManagePins}
+                title="Configurar PINs de Acesso"
+                className="flex-1 py-1.5 px-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[11px] font-semibold transition cursor-pointer flex items-center justify-center gap-1"
+              >
+                <KeyRound className="w-3 h-3 text-[#F9E547]" />
+                <span>PINs</span>
+              </button>
+            )}
+
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                title="Sair / Trocar Usuário"
+                className="py-1.5 px-2.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 hover:text-white rounded-lg text-[11px] font-semibold transition cursor-pointer flex items-center justify-center gap-1"
+              >
+                <LogOut className="w-3 h-3 text-rose-400" />
+                <span>Sair</span>
+              </button>
+            )}
           </div>
         </div>
       </aside>

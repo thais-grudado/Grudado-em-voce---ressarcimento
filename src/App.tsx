@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import { CheckCircle2 } from 'lucide-react';
-import { Claim, FilterState, ClaimStats, ResolutionStatus, RefundStatus, GoogleSheetConfig } from './types';
+import { Claim, FilterState, ClaimStats, ResolutionStatus, RefundStatus, GoogleSheetConfig, AppUser } from './types';
 import { INITIAL_CLAIMS } from './data/initialData';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -11,6 +11,10 @@ import { ClaimModal } from './components/ClaimModal';
 import { QuickCobranceModal } from './components/QuickCobranceModal';
 import { ImportExportModal } from './components/ImportExportModal';
 import { GoogleSheetsModal } from './components/GoogleSheetsModal';
+import { PinAuthScreen } from './components/PinAuthScreen';
+import { ManagePinsModal } from './components/ManagePinsModal';
+import { AdminAuthPromptModal } from './components/AdminAuthPromptModal';
+import { getStoredSession, setStoredSession, clearStoredSession, getRolePermissions } from './utils/auth';
 import { fetchGoogleSheetCSV, parseClaimsFromCSV, normalizeCarrierName } from './services/googleSheetsService';
 import { exportClaimsToCSV, computeSLAStatus, normalizeMonthYearKey } from './utils/formatters';
 
@@ -138,6 +142,26 @@ export default function App() {
 
   // Mobile sidebar state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Authentication & Role Permissions
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => getStoredSession());
+  const [isManagePinsOpen, setIsManagePinsOpen] = useState(false);
+  const [adminPromptAction, setAdminPromptAction] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onAuthorize: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onAuthorize: () => {},
+  });
+
+  const handleLogout = () => {
+    clearStoredSession();
+    setCurrentUser(null);
+  };
 
   // Modals state
   const [isClaimModalOpen, setIsClaimModalOpen] = useState(false);
@@ -306,8 +330,8 @@ export default function App() {
     });
   };
 
-  // Delete single claim
-  const handleDeleteClaim = (id: string) => {
+  // Delete single claim with permission guard
+  const executeDeleteClaim = (id: string) => {
     if (confirm('Tem certeza que deseja remover esta solicitação de ressarcimento?')) {
       setClaims((prev) => {
         const next = prev.filter((c) => c.id !== id);
@@ -317,6 +341,20 @@ export default function App() {
         return next;
       });
     }
+  };
+
+  const handleDeleteClaim = (id: string) => {
+    const permissions = currentUser ? getRolePermissions(currentUser.role) : null;
+    if (!permissions?.canDeleteClaim) {
+      setAdminPromptAction({
+        isOpen: true,
+        title: 'Excluir Solicitação',
+        description: 'Apenas Administradores podem excluir solicitações. Digite o PIN de Administrador para autorizar.',
+        onAuthorize: () => executeDeleteClaim(id),
+      });
+      return;
+    }
+    executeDeleteClaim(id);
   };
 
   // Batch updates
@@ -364,7 +402,7 @@ export default function App() {
     });
   };
 
-  const handleBatchDelete = (ids: string[]) => {
+  const executeBatchDelete = (ids: string[]) => {
     setClaims((prev) => {
       const next = prev.filter((c) => !ids.includes(c.id));
       try {
@@ -374,9 +412,23 @@ export default function App() {
     });
   };
 
-  // Reset to initial 10 records
-  const handleResetData = () => {
-    if (confirm('Deseja recarregar os 10 registros originais da sua planilha? (Isso redefinirá os status alterados)')) {
+  const handleBatchDelete = (ids: string[]) => {
+    const permissions = currentUser ? getRolePermissions(currentUser.role) : null;
+    if (!permissions?.canDeleteClaim) {
+      setAdminPromptAction({
+        isOpen: true,
+        title: 'Exclusão em Lote',
+        description: 'Excluir múltiplos chamados exige autorização de Administrador.',
+        onAuthorize: () => executeBatchDelete(ids),
+      });
+      return;
+    }
+    executeBatchDelete(ids);
+  };
+
+  // Reset to initial records with permission guard
+  const executeResetData = () => {
+    if (confirm('Deseja recarregar os registros originais da planilha? (Isso redefinirá os status alterados)')) {
       clearStatusOverrides();
       setClaims(INITIAL_CLAIMS);
       try {
@@ -395,6 +447,20 @@ export default function App() {
       setSyncToast('Registros restaurados com sucesso!');
       setTimeout(() => setSyncToast(null), 3000);
     }
+  };
+
+  const handleResetData = () => {
+    const permissions = currentUser ? getRolePermissions(currentUser.role) : null;
+    if (!permissions?.canResetData) {
+      setAdminPromptAction({
+        isOpen: true,
+        title: 'Restaurar Registros',
+        description: 'Apenas Administradores podem restaurar a base de dados original.',
+        onAuthorize: () => executeResetData(),
+      });
+      return;
+    }
+    executeResetData();
   };
 
   // Import claims manually
@@ -781,6 +847,18 @@ export default function App() {
     });
   }, [claims, filters]);
 
+  // Check if user is authenticated via PIN
+  if (!currentUser) {
+    return (
+      <PinAuthScreen
+        onLoginSuccess={(user) => {
+          setStoredSession(user);
+          setCurrentUser(user);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
       {/* Sidebar from Professional Polish theme */}
@@ -798,6 +876,9 @@ export default function App() {
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
         sheetConfig={sheetConfig}
         onOpenGoogleSheetsModal={() => setIsSheetsModalOpen(true)}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        onOpenManagePins={() => setIsManagePinsOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -825,6 +906,9 @@ export default function App() {
           onOpenGoogleSheetsModal={() => setIsSheetsModalOpen(true)}
           onQuickSyncSheets={handleQuickSyncSheets}
           isSyncingSheets={isSyncingSheets}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+          onOpenManagePins={() => setIsManagePinsOpen(true)}
         />
 
         {/* Executive Dashboard & Claims Sections */}
@@ -875,6 +959,7 @@ export default function App() {
                 onCobranceClick={(c) => setCobranceClaim(c)}
                 onBatchUpdateStatus={handleBatchUpdateStatus}
                 onBatchDelete={handleBatchDelete}
+                currentUser={currentUser}
               />
             </>
           )}
@@ -895,6 +980,7 @@ export default function App() {
                 onCobranceClick={(c) => setCobranceClaim(c)}
                 onBatchUpdateStatus={handleBatchUpdateStatus}
                 onBatchDelete={handleBatchDelete}
+                currentUser={currentUser}
               />
             </>
           )}
@@ -970,6 +1056,33 @@ export default function App() {
         onSaveConfig={setSheetConfig}
         onSyncClaims={handleSyncClaims}
         currentClaimsCount={claims.length}
+      />
+
+      {/* Manage PINs Modal */}
+      {currentUser && (
+        <ManagePinsModal
+          isOpen={isManagePinsOpen}
+          onClose={() => setIsManagePinsOpen(false)}
+          currentUser={currentUser}
+          onUsersUpdated={(updatedUsers) => {
+            const me = updatedUsers.find((u) => u.id === currentUser.id);
+            if (me) {
+              setStoredSession(me);
+              setCurrentUser(me);
+            }
+          }}
+        />
+      )}
+
+      {/* Admin Authorization Prompt Modal */}
+      <AdminAuthPromptModal
+        isOpen={adminPromptAction.isOpen}
+        onClose={() => setAdminPromptAction((prev) => ({ ...prev, isOpen: false }))}
+        onAuthorized={() => {
+          adminPromptAction.onAuthorize();
+        }}
+        actionTitle={adminPromptAction.title}
+        actionDescription={adminPromptAction.description}
       />
 
       {/* Floating Sync Notification Toast */}
