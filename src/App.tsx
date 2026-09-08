@@ -707,6 +707,8 @@ export default function App() {
     let notApplicableAmount = 0;
     let overdueCount = 0;
     let dueTodayCount = 0;
+    let awaitingPaymentCount = 0;
+    let awaitingPaymentAmount = 0;
 
     const carrierMap: Record<
       string,
@@ -747,6 +749,12 @@ export default function App() {
       const sla = computeSLAStatus(claim);
       if (sla.status === 'overdue') overdueCount += 1;
       if (sla.status === 'due_today') dueTodayCount += 1;
+
+      // Track approved claims awaiting payment (resolution = 'Sim' & refundStatus = 'Pendente')
+      if (claim.resolution === 'Sim' && claim.refundStatus === 'Pendente' && !isNonRefundable) {
+        awaitingPaymentCount += 1;
+        awaitingPaymentAmount += amt;
+      }
 
       // Carrier breakdown
       const carrierName = claim.carrier || 'Outros';
@@ -820,6 +828,8 @@ export default function App() {
       notApplicableAmount,
       overdueCount,
       dueTodayCount,
+      awaitingPaymentCount,
+      awaitingPaymentAmount,
       recoveryRate,
       carrierDistribution,
       problemDistribution,
@@ -832,6 +842,7 @@ export default function App() {
     return claims.filter((claim) => {
       // Tab filter
       if (filters.tab === 'pending' && (claim.refundStatus !== 'Pendente' || claim.isRefundEligible === false)) return false;
+      if (filters.tab === 'awaiting_payment' && (claim.resolution !== 'Sim' || claim.refundStatus !== 'Pendente' || claim.isRefundEligible === false)) return false;
       if (filters.tab === 'paid' && claim.refundStatus !== 'Pago') return false;
       if (filters.tab === 'denied' && claim.refundStatus !== 'Negado') return false;
       if (filters.tab === 'not_applicable' && claim.refundStatus !== 'Não se aplica' && claim.isRefundEligible !== false) return false;

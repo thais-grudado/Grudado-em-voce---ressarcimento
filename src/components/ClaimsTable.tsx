@@ -121,6 +121,18 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
               <span>Pendentes</span>
             </button>
             <button
+              onClick={() => onFilterChange({ tab: 'awaiting_payment' })}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer whitespace-nowrap ${
+                filters.tab === 'awaiting_payment'
+                  ? 'bg-sky-600 text-white shadow-2xs'
+                  : 'text-sky-800 bg-sky-100 hover:bg-sky-200 border border-sky-300'
+              }`}
+              title="Chamados com retorno aprovado pela transportadora aguardando depósito financeiro"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-sky-600" />
+              <span>Aguardando Depósito</span>
+            </button>
+            <button
               onClick={() => onFilterChange({ tab: 'overdue' })}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer whitespace-nowrap ${
                 filters.tab === 'overdue'
@@ -431,18 +443,29 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
                       <div className="text-slate-700 font-medium">
                         {formatDateBR(claim.estimatedReturnDate)}
                       </div>
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider mt-0.5 ${
-                          sla.status === 'overdue'
-                            ? 'bg-rose-100 text-rose-700'
-                            : sla.status === 'completed'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
-                        {sla.status === 'overdue' && <AlertTriangle className="w-2.5 h-2.5" />}
-                        {sla.label}
-                      </span>
+                      <div className="mt-0.5">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            sla.status === 'overdue'
+                              ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                              : sla.status === 'answered_pending_payment'
+                              ? 'bg-sky-50 text-sky-800 border border-sky-200 font-bold'
+                              : sla.status === 'completed'
+                              ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                              : 'bg-blue-100 text-blue-700 border border-blue-200'
+                          }`}
+                        >
+                          {sla.status === 'overdue' && <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />}
+                          {sla.status === 'answered_pending_payment' && <CheckCircle2 className="w-2.5 h-2.5 text-sky-600" />}
+                          {sla.status === 'completed' && <Check className="w-2.5 h-2.5 text-emerald-600" />}
+                          {sla.label}
+                        </span>
+                        {sla.sublabel && (
+                          <span className="block text-[10px] text-slate-500 font-medium mt-0.5">
+                            {sla.sublabel}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Inline Resolution */}
@@ -452,20 +475,24 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
                           value={claim.resolution}
                           onChange={(e) => {
                             const newRes = e.target.value as ResolutionStatus;
-                            const newRefund = newRes === 'Sim' && claim.refundStatus === 'Pendente' 
-                              ? 'Pago' 
-                              : (newRes === 'Não' && claim.refundStatus === 'Pendente' ? 'Negado' : claim.refundStatus);
+                            const newRefund = newRes === 'Não' && claim.refundStatus === 'Pendente' 
+                              ? 'Negado' 
+                              : claim.refundStatus;
                             onUpdateStatus(
                               claim.id,
                               newRes,
                               newRefund
                             );
                           }}
-                          className="text-xs font-semibold px-2 py-1 bg-white border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                          className={`text-xs font-semibold px-2 py-1 bg-white border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer ${
+                            claim.resolution === 'Sim'
+                              ? 'border-sky-300 text-sky-800 bg-sky-50/40'
+                              : 'border-slate-200 text-slate-800'
+                          }`}
                         >
                           <option value="Em análise">Em análise</option>
-                          <option value="Sim">Sim</option>
-                          <option value="Não">Não</option>
+                          <option value="Sim">Sim (Retorno OK)</option>
+                          <option value="Não">Não (Recusado)</option>
                         </select>
                       ) : (
                         <span className="inline-block text-xs font-semibold px-2 py-1 bg-slate-100 text-slate-700 rounded border border-slate-200">
@@ -477,49 +504,63 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
                     {/* Inline Status Pill */}
                     <td className="px-5 py-3.5 whitespace-nowrap">
                       {canChangeStatus ? (
-                        <select
-                          value={claim.refundStatus}
-                          onChange={(e) => {
-                            const newStatus = e.target.value as RefundStatus;
-                            const newResolution: ResolutionStatus =
-                              newStatus === 'Pago' ? 'Sim' :
-                              newStatus === 'Negado' ? 'Não' :
-                              claim.resolution;
-                            onUpdateStatus(
-                              claim.id,
-                              newResolution,
-                              newStatus
-                            );
-                          }}
-                          className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider cursor-pointer border-0 outline-none ${
-                            claim.refundStatus === 'Pago'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : claim.refundStatus === 'Negado'
-                              ? 'bg-rose-100 text-rose-700'
-                              : claim.refundStatus === 'Não se aplica'
-                              ? 'bg-slate-100 text-slate-700 border border-slate-300'
-                              : 'bg-amber-100 text-amber-700'
-                          }`}
-                        >
-                          <option value="Pendente" className="bg-white text-slate-800 font-normal">Pendente</option>
-                          <option value="Pago" className="bg-white text-slate-800 font-normal">Pago</option>
-                          <option value="Negado" className="bg-white text-slate-800 font-normal">Negado</option>
-                          <option value="Não se aplica" className="bg-white text-slate-800 font-normal">Não se aplica</option>
-                        </select>
+                        <div>
+                          <select
+                            value={claim.refundStatus}
+                            onChange={(e) => {
+                              const newStatus = e.target.value as RefundStatus;
+                              const newResolution: ResolutionStatus =
+                                newStatus === 'Pago' ? 'Sim' :
+                                newStatus === 'Negado' ? 'Não' :
+                                claim.resolution;
+                              onUpdateStatus(
+                                claim.id,
+                                newResolution,
+                                newStatus
+                              );
+                            }}
+                            className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider cursor-pointer border outline-none ${
+                              claim.refundStatus === 'Pago'
+                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                : claim.refundStatus === 'Negado'
+                                ? 'bg-rose-100 text-rose-700 border-rose-200'
+                                : claim.refundStatus === 'Não se aplica'
+                                ? 'bg-slate-100 text-slate-700 border-slate-300'
+                                : 'bg-amber-100 text-amber-700 border-amber-200'
+                            }`}
+                          >
+                            <option value="Pendente" className="bg-white text-slate-800 font-normal">Pendente</option>
+                            <option value="Pago" className="bg-white text-slate-800 font-normal">Pago</option>
+                            <option value="Negado" className="bg-white text-slate-800 font-normal">Negado</option>
+                            <option value="Não se aplica" className="bg-white text-slate-800 font-normal">Não se aplica</option>
+                          </select>
+                          {claim.resolution === 'Sim' && claim.refundStatus === 'Pendente' && (
+                            <span className="block text-[10px] text-sky-700 font-semibold mt-0.5">
+                              Aguardando depósito
+                            </span>
+                          )}
+                        </div>
                       ) : (
-                        <span
-                          className={`inline-block px-2.5 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider ${
-                            claim.refundStatus === 'Pago'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : claim.refundStatus === 'Negado'
-                              ? 'bg-rose-100 text-rose-700'
-                              : claim.refundStatus === 'Não se aplica'
-                              ? 'bg-slate-100 text-slate-700 border border-slate-300'
-                              : 'bg-amber-100 text-amber-700'
-                          }`}
-                        >
-                          {claim.refundStatus}
-                        </span>
+                        <div>
+                          <span
+                            className={`inline-block px-2.5 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider ${
+                              claim.refundStatus === 'Pago'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : claim.refundStatus === 'Negado'
+                                ? 'bg-rose-100 text-rose-700'
+                                : claim.refundStatus === 'Não se aplica'
+                                ? 'bg-slate-100 text-slate-700 border border-slate-300'
+                                : 'bg-amber-100 text-amber-700'
+                            }`}
+                          >
+                            {claim.refundStatus}
+                          </span>
+                          {claim.resolution === 'Sim' && claim.refundStatus === 'Pendente' && (
+                            <span className="block text-[10px] text-sky-700 font-semibold mt-0.5">
+                              Aguardando depósito
+                            </span>
+                          )}
+                        </div>
                       )}
                     </td>
 

@@ -534,9 +534,7 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
                     type="button"
                     onClick={() => {
                       setResolution(st);
-                      if (st === 'Sim' && refundStatus === 'Pendente') {
-                        setRefundStatus('Pago');
-                      } else if (st === 'Não' && refundStatus === 'Pendente') {
+                      if (st === 'Não' && refundStatus === 'Pendente') {
                         setRefundStatus('Negado');
                       }
                     }}
@@ -580,6 +578,19 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Destaque Informativo: Retorno OK aguardando depósito */}
+          {resolution === 'Sim' && refundStatus === 'Pendente' && (
+            <div className="p-3 bg-sky-50 rounded-xl border border-sky-200 text-xs text-sky-800 flex items-start gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-sky-900">Retorno da Transportadora Recebido (Deferido / Aprovado)</p>
+                <p className="text-sky-700 text-[11px] mt-0.5 leading-relaxed">
+                  O SLA da transportadora foi concluído com sucesso e <strong>não ficará mais marcando como vencido</strong>. O status financeiro permanece como <strong>Pendente</strong> até a transportadora efetuar o depósito bancário ou abater na fatura (prazo habitual de até 30 dias).
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div>

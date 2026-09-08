@@ -73,9 +73,15 @@ export const DashboardMetrics: React.FC<DashboardMetricsProps> = ({
               {formatBRL(stats.pendingAmount)}
             </p>
           </div>
-          <div className="mt-3 text-xs text-slate-500 flex items-center justify-between">
+          <div className="mt-3 text-xs text-slate-500 flex items-center justify-between gap-1 flex-wrap">
             <span>{stats.pendingCount} solicitações abertas</span>
-            <span className="text-[11px] text-amber-600 font-medium">Em análise</span>
+            {stats.awaitingPaymentCount > 0 ? (
+              <span className="text-[11px] text-sky-800 font-semibold bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200" title="Retorno já aprovado, aguardando repasse bancário">
+                {stats.awaitingPaymentCount} aguardando depósito
+              </span>
+            ) : (
+              <span className="text-[11px] text-amber-600 font-medium">Em análise</span>
+            )}
           </div>
         </div>
 
@@ -157,17 +163,17 @@ export const DashboardMetrics: React.FC<DashboardMetricsProps> = ({
           <div>
             <div className="flex items-center justify-between mb-1">
               <p className="text-xs font-bold text-rose-500 uppercase tracking-wider">
-                SLA Vencido
+                SLA Retorno Vencido
               </p>
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              {stats.overdueCount > 0 && <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />}
             </div>
             <p className="text-3xl font-bold text-rose-600 tracking-tight">
               {stats.overdueCount} <span className="text-sm font-semibold text-rose-400">chamados</span>
             </p>
           </div>
           <div className="mt-3 text-xs text-slate-500 flex items-center justify-between">
-            <span>Necessitam cobrança</span>
-            <span className="text-[11px] text-rose-600 font-bold">Urgente</span>
+            <span>Sem retorno da transportadora</span>
+            <span className="text-[11px] text-rose-600 font-bold">Cobrar</span>
           </div>
         </div>
       </div>

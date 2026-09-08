@@ -50,12 +50,13 @@ export interface Claim {
   protocolNumber?: string;
   ticketStatus?: string; // Status da ocorrência/chamado (ex: "Em análise", "Entregue com atraso", "Aguardando transportadora", etc.)
   isRefundEligible?: boolean; // Indica se é plausível de ressarcimento (false quando é apenas acompanhamento de atraso/rastreio)
+  expectedPaymentDate?: string; // Previsão de pagamento/depósito do ressarcimento pela transportadora
   notes?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export type SLAStatus = 'overdue' | 'due_today' | 'on_track' | 'completed';
+export type SLAStatus = 'overdue' | 'due_today' | 'on_track' | 'completed' | 'answered_pending_payment';
 
 export interface FilterState {
   search: string;
@@ -66,7 +67,7 @@ export interface FilterState {
   ticketStatus?: string;
   monthYear: string;
   slaFilter: 'all' | 'overdue' | 'due_today' | 'on_track';
-  tab: 'all' | 'pending' | 'overdue' | 'paid' | 'denied' | 'not_applicable';
+  tab: 'all' | 'pending' | 'awaiting_payment' | 'overdue' | 'paid' | 'denied' | 'not_applicable';
 }
 
 export interface ClaimStats {
@@ -82,6 +83,8 @@ export interface ClaimStats {
   notApplicableAmount: number;
   overdueCount: number;
   dueTodayCount: number;
+  awaitingPaymentCount?: number;
+  awaitingPaymentAmount?: number;
   recoveryRate: number; // percentage (paid / total eligible)
   carrierDistribution: {
     name: string;

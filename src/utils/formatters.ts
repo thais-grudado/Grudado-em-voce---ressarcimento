@@ -158,28 +158,73 @@ export function getMonthYearFromDate(dateStr: string): string {
 }
 
 /**
- * Computes SLA Status against a reference date (default: 2026-09-06)
+ * Computes SLA Status against a reference date (default: today)
+ *
+ * Separação conceitual:
+ * 1. SLA de Retorno da Transportadora: Prazo para a transportadora dar o parecer/resolução.
+ *    - Se resolution === 'Sim': Retorno já obtido (Deferido)! Não conta como SLA Vencido.
+ *    - Se resolution === 'Não': Retorno já obtido (Recusado).
+ *    - Se refundStatus === 'Pago': Concluído e creditado.
+ *    - Se resolution === 'Em análise': Prazo de SLA ativo. Se diffDays < 0, aí sim é "Vencido (Sem Retorno)".
+ * 2. Ciclo Financeiro de Ressarcimento:
+ *    - Se resolution === 'Sim' e refundStatus === 'Pendente': "Retorno Recebido • Aguardando Pagamento".
  */
 export function computeSLAStatus(
   claim: Claim,
   refDateStr?: string
-): { status: SLAStatus; label: string; daysDiff: number; badgeColor: string } {
-  // Only officially paid or denied claims are completed; pending refunds still have SLA tracking
-  if (claim.refundStatus === 'Pago' || claim.refundStatus === 'Negado') {
+): { status: SLAStatus; label: string; sublabel?: string; daysDiff: number; badgeColor: string } {
+  // 1. Concluído financeiramente
+  if (claim.refundStatus === 'Pago') {
     return {
       status: 'completed',
       label: 'Finalizado',
+      sublabel: 'Ressarcido',
       daysDiff: 0,
-      badgeColor: 'bg-[#8EDD65]/20 text-[#253746] border border-[#8EDD65]/40 font-semibold',
+      badgeColor: 'bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold',
     };
   }
 
+  // 2. Recusado ou Negado
+  if (claim.refundStatus === 'Negado' || claim.resolution === 'Não') {
+    return {
+      status: 'completed',
+      label: 'Recusado',
+      sublabel: 'Retorno recebido',
+      daysDiff: 0,
+      badgeColor: 'bg-slate-100 text-slate-700 border border-slate-200 font-semibold',
+    };
+  }
+
+  // 3. Não elegível a ressarcimento (apenas acompanhamento/atraso)
+  if (claim.refundStatus === 'Não se aplica' || claim.isRefundEligible === false) {
+    return {
+      status: 'completed',
+      label: 'Acompanhamento',
+      sublabel: 'Sem ressarcimento',
+      daysDiff: 0,
+      badgeColor: 'bg-slate-100 text-slate-600 border border-slate-200',
+    };
+  }
+
+  // 4. Retorno positivo já recebido (Resolução = 'Sim'), aguardando pagamento/depósito bancário
+  if (claim.resolution === 'Sim') {
+    return {
+      status: 'answered_pending_payment',
+      label: 'Retorno Recebido',
+      sublabel: 'Aguardando Pagto',
+      daysDiff: 0,
+      badgeColor: 'bg-sky-50 text-sky-800 border border-sky-200 font-semibold',
+    };
+  }
+
+  // 5. Chamado ainda em análise (SLA de resposta da transportadora em andamento)
   if (!claim.estimatedReturnDate) {
     return {
       status: 'on_track',
       label: 'Sem prazo',
+      sublabel: 'Aguardando transportadora',
       daysDiff: 0,
-      badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
+      badgeColor: 'bg-slate-100 text-slate-700 border border-slate-200',
     };
   }
 
@@ -200,6 +245,7 @@ export function computeSLAStatus(
     return {
       status: 'overdue',
       label: `Vencido há ${daysLate} ${daysLate === 1 ? 'dia' : 'dias'}`,
+      sublabel: 'Sem Retorno',
       daysDiff: diffDays,
       badgeColor: 'bg-[#EF426F]/15 text-[#EF426F] border border-[#EF426F]/30 font-bold',
     };
@@ -207,6 +253,7 @@ export function computeSLAStatus(
     return {
       status: 'due_today',
       label: 'Vence Hoje',
+      sublabel: 'Aguardando retorno',
       daysDiff: 0,
       badgeColor: 'bg-[#FF6A39]/20 text-[#FF6A39] border border-[#FF6A39]/40 font-bold',
     };
@@ -214,6 +261,7 @@ export function computeSLAStatus(
     return {
       status: 'on_track',
       label: `No prazo (${diffDays} ${diffDays === 1 ? 'dia' : 'dias'})`,
+      sublabel: 'Em análise',
       daysDiff: diffDays,
       badgeColor: 'bg-[#05C3DE]/15 text-[#253746] border border-[#05C3DE]/30 font-medium',
     };
@@ -276,6 +324,29 @@ export function exportClaimsToCSV(claims: Claim[]): void {
  * Standardized carrier cobrança message generator (ready for WhatsApp / Email)
  */
 export function generateCobranceMessage(claim: Claim): string {
+  const isApprovedAwaitingPayment = claim.resolution === 'Sim' && claim.refundStatus === 'Pendente';
+
+  if (isApprovedAwaitingPayment) {
+    return `*SOLICITAÇÃO DE COMPROVANTE DE PAGAMENTO / REPASSE - GRUDADO EM VOCÊ*
+
+Prezada equipe ${claim.carrier},
+
+Identificamos que o sinistro referente ao pedido abaixo já foi *DEFERIDO / APROVADO* para indenização:
+
+📦 *Nº Pedido:* #${claim.orderNumber}
+🔍 *Código de Rastreio:* ${claim.trackingCode || 'N/A'}
+📄 *Nota Fiscal:* ${claim.invoiceNumber || 'N/A'}
+💰 *Valor Deferido:* ${formatBRL(claim.amount)}
+⚠️ *Ocorrência:* ${claim.problemType}
+📅 *Data Abertura:* ${formatDateBR(claim.ticketDate)}
+📋 *Protocolo Transportadora:* ${claim.protocolNumber || 'N/A'}
+
+${claim.notes ? `*Observações internas:* ${claim.notes}\n` : ''}Como o ressarcimento consta pendente de crédito em nosso controle, solicitamos a gentileza de nos enviar o *comprovante de depósito bancário* ou informar o número da *fatura/crédito* onde o valor foi abatido.
+
+Atenciosamente,
+*Equipe de Logística & SAC - Grudado em Você*`;
+  }
+
   return `*SOLICITAÇÃO DE POSIÇÃO DE RESSARCIMENTO - GRUDADO EM VOCÊ*
 
 Prezada equipe ${claim.carrier},
@@ -291,8 +362,7 @@ Solicitamos com urgência uma atualização referente ao protocolo de indenizaç
 ⏱️ *Prazo SLA Acordado:* ${claim.slaDays} dias (Previsão: ${formatDateBR(claim.estimatedReturnDate)})
 📋 *Protocolo Transportadora:* ${claim.protocolNumber || 'N/A'}
 
-${claim.notes ? `*Observações internas:* ${claim.notes}\n` : ''}
-Conforme nosso acordo de nível de serviço (SLA), aguardamos a confirmação da indenização e respectivo comprovante de crédito/estorno.
+${claim.notes ? `*Observações internas:* ${claim.notes}\n` : ''}Conforme nosso acordo de nível de serviço (SLA), aguardamos a confirmação da indenização e respectivo parecer da transportadora.
 
 Atenciosamente,
 *Equipe de Logística & SAC - Grudado em Você*`;
