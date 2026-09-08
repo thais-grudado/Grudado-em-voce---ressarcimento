@@ -152,6 +152,17 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
     } else {
       setIsRefundEligible(true);
     }
+    if (st === 'Pago') {
+      setResolution('Sim');
+      if (!ticketStatus || ticketStatus === 'Em análise' || ticketStatus === 'Atraso em Tratativa') {
+        setTicketStatus('Indenizado / Pago');
+      }
+    } else if (st === 'Negado') {
+      setResolution('Não');
+      if (!ticketStatus || ticketStatus === 'Em análise' || ticketStatus === 'Atraso em Tratativa') {
+        setTicketStatus('Recusado / Negado');
+      }
+    }
   };
 
   if (!isOpen) return null;
@@ -166,6 +177,10 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
     const parsedAmount = parseFloat(amount.replace(',', '.')) || 0;
     const finalMonthYear = monthYear.trim() || getMonthYearFromDate(ticketDate) || 'julho/2026';
     const finalTicketStatus = customStatusInput.trim() || ticketStatus || 'Em análise';
+    const finalResolution: ResolutionStatus =
+      refundStatus === 'Pago' ? 'Sim' :
+      refundStatus === 'Negado' ? 'Não' :
+      resolution;
 
     onSave(
       {
@@ -179,7 +194,7 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
         problemType,
         slaDays: Number(slaDays) || 0,
         estimatedReturnDate: estimatedReturnDate || addDaysToDate(ticketDate, slaDays),
-        resolution,
+        resolution: finalResolution,
         refundStatus,
         ticketStatus: finalTicketStatus,
         isRefundEligible,
@@ -517,7 +532,14 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
                   <button
                     key={st}
                     type="button"
-                    onClick={() => setResolution(st)}
+                    onClick={() => {
+                      setResolution(st);
+                      if (st === 'Sim' && refundStatus === 'Pendente') {
+                        setRefundStatus('Pago');
+                      } else if (st === 'Não' && refundStatus === 'Pendente') {
+                        setRefundStatus('Negado');
+                      }
+                    }}
                     className={`py-1.5 text-xs font-medium rounded-md border transition cursor-pointer ${
                       resolution === st
                         ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'

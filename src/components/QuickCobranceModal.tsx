@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Copy, Check, MessageSquare, Send, Truck } from 'lucide-react';
+import { X, Copy, Check, MessageSquare, Send, Truck, CheckCircle2 } from 'lucide-react';
 import { Claim } from '../types';
 import { generateCobranceMessage, computeSLAStatus } from '../utils/formatters';
 
@@ -7,12 +7,14 @@ interface QuickCobranceModalProps {
   claim: Claim | null;
   isOpen: boolean;
   onClose: () => void;
+  onMarkAsPaid?: (claimId: string) => void;
 }
 
 export const QuickCobranceModal: React.FC<QuickCobranceModalProps> = ({
   claim,
   isOpen,
   onClose,
+  onMarkAsPaid,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -30,6 +32,13 @@ export const QuickCobranceModal: React.FC<QuickCobranceModalProps> = ({
   const handleOpenWhatsApp = () => {
     const encoded = encodeURIComponent(messageText);
     window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+  };
+
+  const handlePaidClick = () => {
+    if (onMarkAsPaid) {
+      onMarkAsPaid(claim.id);
+      onClose();
+    }
   };
 
   return (
@@ -88,7 +97,19 @@ export const QuickCobranceModal: React.FC<QuickCobranceModalProps> = ({
               <span>Abrir no WhatsApp</span>
             </button>
 
-            <div className="w-full sm:w-auto flex items-center justify-end gap-2">
+            <div className="w-full sm:w-auto flex flex-wrap items-center justify-end gap-2">
+              {claim.refundStatus !== 'Pago' && onMarkAsPaid && (
+                <button
+                  type="button"
+                  onClick={handlePaidClick}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-md shadow-xs transition cursor-pointer"
+                  title="Marcar como indenizado / pago com sucesso"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Marcar como Pago</span>
+                </button>
+              )}
+
               <button
                 onClick={onClose}
                 className="px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-md transition cursor-pointer"

@@ -434,13 +434,17 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
                     <td className="px-5 py-3.5 whitespace-nowrap">
                       <select
                         value={claim.resolution}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const newRes = e.target.value as ResolutionStatus;
+                          const newRefund = newRes === 'Sim' && claim.refundStatus === 'Pendente' 
+                            ? 'Pago' 
+                            : (newRes === 'Não' && claim.refundStatus === 'Pendente' ? 'Negado' : claim.refundStatus);
                           onUpdateStatus(
                             claim.id,
-                            e.target.value as ResolutionStatus,
-                            claim.refundStatus
-                          )
-                        }
+                            newRes,
+                            newRefund
+                          );
+                        }}
                         className="text-xs font-semibold px-2 py-1 bg-white border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
                       >
                         <option value="Em análise">Em análise</option>
@@ -453,13 +457,18 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
                     <td className="px-5 py-3.5 whitespace-nowrap">
                       <select
                         value={claim.refundStatus}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const newStatus = e.target.value as RefundStatus;
+                          const newResolution: ResolutionStatus =
+                            newStatus === 'Pago' ? 'Sim' :
+                            newStatus === 'Negado' ? 'Não' :
+                            claim.resolution;
                           onUpdateStatus(
                             claim.id,
-                            claim.resolution,
-                            e.target.value as RefundStatus
-                          )
-                        }
+                            newResolution,
+                            newStatus
+                          );
+                        }}
                         className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider cursor-pointer border-0 outline-none ${
                           claim.refundStatus === 'Pago'
                             ? 'bg-emerald-100 text-emerald-700'

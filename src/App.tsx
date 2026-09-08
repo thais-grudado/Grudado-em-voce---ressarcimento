@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
+import { CheckCircle2 } from 'lucide-react';
 import { Claim, FilterState, ClaimStats, ResolutionStatus, RefundStatus, GoogleSheetConfig } from './types';
 import { INITIAL_CLAIMS } from './data/initialData';
 import { Sidebar } from './components/Sidebar';
@@ -15,6 +16,46 @@ import { exportClaimsToCSV, computeSLAStatus, normalizeMonthYearKey } from './ut
 
 const STORAGE_KEY = 'grudado_em_voce_ressarcimentos_v1';
 const SHEETS_CONFIG_KEY = 'grudado_em_voce_sheets_config_v1';
+const USER_OVERRIDES_KEY = 'grudado_em_voce_status_overrides_v1';
+
+interface StatusOverride {
+  refundStatus: RefundStatus;
+  resolution: ResolutionStatus;
+  ticketStatus?: string;
+  isRefundEligible?: boolean;
+  notes?: string;
+  updatedAt: string;
+}
+
+const getStatusOverrides = (): Record<string, StatusOverride> => {
+  try {
+    const raw = localStorage.getItem(USER_OVERRIDES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+const setStatusOverride = (key: string, override: Partial<StatusOverride>) => {
+  if (!key) return;
+  try {
+    const current = getStatusOverrides();
+    current[key] = {
+      ...current[key],
+      ...override,
+      updatedAt: new Date().toISOString(),
+    } as StatusOverride;
+    localStorage.setItem(USER_OVERRIDES_KEY, JSON.stringify(current));
+  } catch (err) {
+    console.error('Error saving status override:', err);
+  }
+};
+
+const clearStatusOverrides = () => {
+  try {
+    localStorage.removeItem(USER_OVERRIDES_KEY);
+  } catch {}
+};
 
 export default function App() {
   // Claims state with localStorage persistence
@@ -23,16 +64,24 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed: Claim[] = JSON.parse(saved);
-        // If storage contains the obsolete 10 mock items from previous versions (e.g. orderNumber '1' or '4' with R$ 876)
-        const hasLegacyMock = parsed.some(
-          (c) => c.id === 'claim-1' || (c.orderNumber === '1' && c.amount === 20) || (c.orderNumber === '4' && c.amount === 876)
+        // Filter out ancient legacy mock dummy items while preserving all user claims & changes
+        const validClaims = parsed.filter(
+          (c) => c.id !== 'claim-1' && !(c.orderNumber === '1' && c.amount === 20) && !(c.orderNumber === '4' && c.amount === 876)
         );
-        if (!hasLegacyMock && parsed.length > 0) {
-          // Return user's actual saved records, preserving every edit/status change
-          return parsed.map((c) => ({
-            ...c,
-            carrier: c.carrier ? normalizeCarrierName(c.carrier) : c.carrier,
-          }));
+        if (validClaims.length > 0) {
+          const overrides = getStatusOverrides();
+          return validClaims.map((c) => {
+            const key = c.orderNumber?.trim() || c.id;
+            const ov = overrides[key] || overrides[c.id];
+            return {
+              ...c,
+              carrier: c.carrier ? normalizeCarrierName(c.carrier) : c.carrier,
+              refundStatus: ov?.refundStatus || c.refundStatus,
+              resolution: ov?.resolution || c.resolution,
+              ticketStatus: ov?.ticketStatus || c.ticketStatus,
+              isRefundEligible: ov?.isRefundEligible !== undefined ? ov.isRefundEligible : c.isRefundEligible,
+            };
+          });
         }
       }
     } catch (e) {
@@ -132,22 +181,74 @@ export default function App() {
     editId?: string
   ) => {
     const now = new Date().toISOString();
+    const finalResolution: ResolutionStatus =
+      claimData.refundStatus === 'Pago' ? 'Sim' :
+      claimData.refundStatus === 'Negado' ? 'Não' :
+      claimData.resolution;
+
+    const dataWithResolution = {
+      ...claimData,
+      resolution: finalResolution,
+    };
+
+    if (claimData.refundStatus === 'Pago') {
+      triggerConfetti();
+      setSyncToast(`✓ Pedido #${claimData.orderNumber} salvo como PAGO com sucesso!`);
+      setTimeout(() => setSyncToast(null), 4500);
+    }
+
     if (editId) {
-      setClaims((prev) =>
-        prev.map((c) =>
+      setClaims((prev) => {
+        const next = prev.map((c) =>
           c.id === editId
-            ? { ...c, ...claimData, updatedAt: now }
+            ? { ...c, ...dataWithResolution, updatedAt: now }
             : c
-        )
-      );
+        );
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        } catch (e) {}
+        return next;
+      });
+      // Save status overrides
+      setStatusOverride(editId, {
+        refundStatus: claimData.refundStatus,
+        resolution: finalResolution,
+        ticketStatus: claimData.ticketStatus,
+        isRefundEligible: claimData.isRefundEligible,
+        notes: claimData.notes,
+      });
+      if (claimData.orderNumber) {
+        setStatusOverride(claimData.orderNumber.trim(), {
+          refundStatus: claimData.refundStatus,
+          resolution: finalResolution,
+          ticketStatus: claimData.ticketStatus,
+          isRefundEligible: claimData.isRefundEligible,
+          notes: claimData.notes,
+        });
+      }
     } else {
       const newClaim: Claim = {
-        ...claimData,
+        ...dataWithResolution,
         id: `claim-${Date.now()}`,
         createdAt: now,
         updatedAt: now,
       };
-      setClaims((prev) => [newClaim, ...prev]);
+      setClaims((prev) => {
+        const next = [newClaim, ...prev];
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        } catch (e) {}
+        return next;
+      });
+      if (claimData.orderNumber) {
+        setStatusOverride(claimData.orderNumber.trim(), {
+          refundStatus: claimData.refundStatus,
+          resolution: finalResolution,
+          ticketStatus: claimData.ticketStatus,
+          isRefundEligible: claimData.isRefundEligible,
+          notes: claimData.notes,
+        });
+      }
     }
   };
 
@@ -162,24 +263,59 @@ export default function App() {
       triggerConfetti();
     }
 
-    setClaims((prev) =>
-      prev.map((c) =>
+    const autoResolution: ResolutionStatus =
+      refundStatus === 'Pago' ? 'Sim' :
+      refundStatus === 'Negado' ? 'Não' :
+      resolution;
+
+    const orderDisplay = existing?.orderNumber ? `#${existing.orderNumber}` : '';
+    setSyncToast(
+      refundStatus === 'Pago'
+        ? `✓ Pedido ${orderDisplay} salvo como PAGO!`
+        : `Status do pedido ${orderDisplay} atualizado para "${refundStatus}"`
+    );
+    setTimeout(() => setSyncToast(null), 4500);
+
+    // Save override persistently
+    setStatusOverride(id, {
+      refundStatus,
+      resolution: autoResolution,
+    });
+    if (existing?.orderNumber) {
+      setStatusOverride(existing.orderNumber.trim(), {
+        refundStatus,
+        resolution: autoResolution,
+      });
+    }
+
+    setClaims((prev) => {
+      const next = prev.map((c) =>
         c.id === id
           ? {
               ...c,
-              resolution,
+              resolution: autoResolution,
               refundStatus,
               updatedAt: new Date().toISOString(),
             }
           : c
-      )
-    );
+      );
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
   };
 
   // Delete single claim
   const handleDeleteClaim = (id: string) => {
     if (confirm('Tem certeza que deseja remover esta solicitação de ressarcimento?')) {
-      setClaims((prev) => prev.filter((c) => c.id !== id));
+      setClaims((prev) => {
+        const next = prev.filter((c) => c.id !== id);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        } catch (e) {}
+        return next;
+      });
     }
   };
 
@@ -189,26 +325,63 @@ export default function App() {
     refundStatus: RefundStatus,
     resolution: ResolutionStatus
   ) => {
+    const autoResolution: ResolutionStatus =
+      refundStatus === 'Pago' ? 'Sim' :
+      refundStatus === 'Negado' ? 'Não' :
+      resolution;
+
     if (refundStatus === 'Pago') {
       triggerConfetti();
     }
-    setClaims((prev) =>
-      prev.map((c) =>
+
+    setSyncToast(`✓ ${ids.length} solicitações atualizadas para "${refundStatus}" com sucesso!`);
+    setTimeout(() => setSyncToast(null), 4500);
+
+    ids.forEach((id) => {
+      const existing = claims.find((c) => c.id === id);
+      setStatusOverride(id, {
+        refundStatus,
+        resolution: autoResolution,
+      });
+      if (existing?.orderNumber) {
+        setStatusOverride(existing.orderNumber.trim(), {
+          refundStatus,
+          resolution: autoResolution,
+        });
+      }
+    });
+
+    setClaims((prev) => {
+      const next = prev.map((c) =>
         ids.includes(c.id)
-          ? { ...c, refundStatus, resolution, updatedAt: new Date().toISOString() }
+          ? { ...c, refundStatus, resolution: autoResolution, updatedAt: new Date().toISOString() }
           : c
-      )
-    );
+      );
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
   };
 
   const handleBatchDelete = (ids: string[]) => {
-    setClaims((prev) => prev.filter((c) => !ids.includes(c.id)));
+    setClaims((prev) => {
+      const next = prev.filter((c) => !ids.includes(c.id));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
   };
 
   // Reset to initial 10 records
   const handleResetData = () => {
-    if (confirm('Deseja recarregar os 10 registros originais da sua planilha?')) {
+    if (confirm('Deseja recarregar os 10 registros originais da sua planilha? (Isso redefinirá os status alterados)')) {
+      clearStatusOverrides();
       setClaims(INITIAL_CLAIMS);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_CLAIMS));
+      } catch (e) {}
       setFilters({
         search: '',
         carrier: '',
@@ -219,18 +392,58 @@ export default function App() {
         slaFilter: 'all',
         tab: 'all',
       });
+      setSyncToast('Registros restaurados com sucesso!');
+      setTimeout(() => setSyncToast(null), 3000);
     }
   };
 
   // Import claims manually
   const handleImportClaims = (newClaims: Claim[]) => {
-    setClaims((prev) => [...newClaims, ...prev]);
+    const overrides = getStatusOverrides();
+    const applied = newClaims.map((item) => {
+      const key = item.orderNumber?.trim() || item.id;
+      const ov = overrides[key] || overrides[item.id];
+      if (ov) {
+        return {
+          ...item,
+          refundStatus: ov.refundStatus || item.refundStatus,
+          resolution: ov.resolution || item.resolution,
+        };
+      }
+      return item;
+    });
+    setClaims((prev) => {
+      const next = [...applied, ...prev];
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
   };
 
   // Sync claims from Google Sheets (called from modal or background auto-sync)
   const handleSyncClaims = (newClaims: Claim[], mode: 'merge' | 'replace') => {
+    const overrides = getStatusOverrides();
+
     if (mode === 'replace') {
-      setClaims(newClaims);
+      const applied = newClaims.map((item) => {
+        const key = item.orderNumber?.trim() || item.id;
+        const ov = overrides[key] || overrides[item.id];
+        if (ov) {
+          return {
+            ...item,
+            refundStatus: ov.refundStatus || item.refundStatus,
+            resolution: ov.resolution || item.resolution,
+            ticketStatus: ov.ticketStatus || item.ticketStatus,
+            isRefundEligible: ov.isRefundEligible !== undefined ? ov.isRefundEligible : item.isRefundEligible,
+          };
+        }
+        return item;
+      });
+      setClaims(applied);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(applied));
+      } catch (e) {}
     } else {
       // Merge strategy: update if orderNumber or trackingCode matches, otherwise prepend
       setClaims((prev) => {
@@ -242,16 +455,55 @@ export default function App() {
               (c.trackingCode && newItem.trackingCode && c.trackingCode.trim().toLowerCase() === newItem.trackingCode.trim().toLowerCase())
           );
           if (index !== -1) {
+            const local = updated[index];
+            const key = local.orderNumber?.trim() || local.id;
+            const ov = overrides[key] || overrides[local.id];
+
+            // Determine final preserved refundStatus:
+            // If user marked as Pago, Negado, or Não se aplica, PRESERVE it!
+            let finalRefundStatus = newItem.refundStatus;
+            let finalResolution = newItem.resolution;
+
+            if (ov?.refundStatus) {
+              finalRefundStatus = ov.refundStatus;
+              finalResolution = ov.resolution;
+            } else if (local.refundStatus === 'Pago' || local.refundStatus === 'Negado' || local.refundStatus === 'Não se aplica') {
+              if (newItem.refundStatus === 'Pendente') {
+                finalRefundStatus = local.refundStatus;
+                finalResolution = local.resolution;
+              }
+            }
+
             updated[index] = {
-              ...updated[index],
+              ...local,
               ...newItem,
-              id: updated[index].id, // preserve local id
+              id: local.id, // preserve local id
+              refundStatus: finalRefundStatus,
+              resolution: finalResolution,
+              ticketStatus: ov?.ticketStatus || local.ticketStatus || newItem.ticketStatus,
+              isRefundEligible: ov?.isRefundEligible !== undefined ? ov.isRefundEligible : (local.isRefundEligible !== undefined ? local.isRefundEligible : newItem.isRefundEligible),
+              notes: ov?.notes || local.notes || newItem.notes,
               updatedAt: new Date().toISOString(),
             };
           } else {
-            updated.unshift(newItem);
+            const key = newItem.orderNumber?.trim() || newItem.id;
+            const ov = overrides[key] || overrides[newItem.id];
+            if (ov) {
+              updated.unshift({
+                ...newItem,
+                refundStatus: ov.refundStatus || newItem.refundStatus,
+                resolution: ov.resolution || newItem.resolution,
+                ticketStatus: ov.ticketStatus || newItem.ticketStatus,
+                isRefundEligible: ov.isRefundEligible !== undefined ? ov.isRefundEligible : newItem.isRefundEligible,
+              });
+            } else {
+              updated.unshift(newItem);
+            }
           }
         });
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        } catch (e) {}
         return updated;
       });
     }
@@ -699,6 +951,7 @@ export default function App() {
         isOpen={!!cobranceClaim}
         claim={cobranceClaim}
         onClose={() => setCobranceClaim(null)}
+        onMarkAsPaid={(claimId) => handleUpdateStatus(claimId, 'Sim', 'Pago')}
       />
 
       <ImportExportModal
@@ -721,9 +974,23 @@ export default function App() {
 
       {/* Floating Sync Notification Toast */}
       {syncToast && (
-        <div className="fixed bottom-5 right-5 z-50 bg-[#253746] text-white px-4 py-3 rounded-2xl shadow-xl border border-[#8EDD65]/40 flex items-center gap-3 text-xs animate-bounce">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#8EDD65]" />
+        <div className="fixed bottom-5 right-5 z-50 bg-[#253746] text-white px-4 py-3 rounded-2xl shadow-xl border border-[#8EDD65]/40 flex items-center gap-3 text-xs shadow-slate-900/30">
+          <CheckCircle2 className="w-4 h-4 text-[#8EDD65] shrink-0" />
           <span className="font-semibold">{syncToast}</span>
+          {filters.tab === 'pending' && (
+            <button
+              onClick={() => handleFilterChange({ tab: 'paid' })}
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-[11px] transition cursor-pointer whitespace-nowrap ml-1"
+            >
+              Ver em Pagos &rarr;
+            </button>
+          )}
+          <button
+            onClick={() => setSyncToast(null)}
+            className="text-slate-400 hover:text-white ml-2 text-sm cursor-pointer leading-none"
+          >
+            &times;
+          </button>
         </div>
       )}
     </div>
