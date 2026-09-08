@@ -306,7 +306,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Quick Actions in Sidebar Footer */}
           <div className="pt-1 flex items-center gap-1.5 border-t border-white/10">
-            {onOpenManagePins && (
+            {permissions?.canManagePins && onOpenManagePins && (
               <button
                 onClick={onOpenManagePins}
                 title="Configurar PINs de Acesso"

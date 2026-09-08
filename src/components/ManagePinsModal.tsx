@@ -32,6 +32,11 @@ export const ManagePinsModal: React.FC<ManagePinsModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Strict security guard: only Admin can view and manage team PINs
+  if (currentUser.role !== 'admin') {
+    return null;
+  }
+
   const handlePinChange = (userId: string, newPin: string) => {
     // Only numeric up to 6 digits
     const sanitized = newPin.replace(/\D/g, '').slice(0, 6);

@@ -463,6 +463,35 @@ export default function App() {
     executeResetData();
   };
 
+  // Open Manage PINs strictly for Admin
+  const handleOpenManagePins = () => {
+    if (currentUser?.role !== 'admin') {
+      setAdminPromptAction({
+        isOpen: true,
+        title: 'Acesso Restrito ao Gestor',
+        description: 'Apenas Administradores podem visualizar e gerenciar os PINs da equipe. Digite o PIN de Administrador para autorizar.',
+        onAuthorize: () => setIsManagePinsOpen(true),
+      });
+      return;
+    }
+    setIsManagePinsOpen(true);
+  };
+
+  // Open Google Sheets Modal with permission guard
+  const handleOpenGoogleSheetsModal = () => {
+    const permissions = currentUser ? getRolePermissions(currentUser.role) : null;
+    if (!permissions?.canConfigureSheets) {
+      setAdminPromptAction({
+        isOpen: true,
+        title: 'Configurações de Planilha',
+        description: 'Apenas Administradores podem configurar a integração com o Google Sheets. Digite o PIN de Administrador para prosseguir.',
+        onAuthorize: () => setIsSheetsModalOpen(true),
+      });
+      return;
+    }
+    setIsSheetsModalOpen(true);
+  };
+
   // Import claims manually
   const handleImportClaims = (newClaims: Claim[]) => {
     const overrides = getStatusOverrides();
@@ -875,10 +904,10 @@ export default function App() {
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
         sheetConfig={sheetConfig}
-        onOpenGoogleSheetsModal={() => setIsSheetsModalOpen(true)}
+        onOpenGoogleSheetsModal={handleOpenGoogleSheetsModal}
         currentUser={currentUser}
         onLogout={handleLogout}
-        onOpenManagePins={() => setIsManagePinsOpen(true)}
+        onOpenManagePins={currentUser?.role === 'admin' ? handleOpenManagePins : undefined}
       />
 
       {/* Main Content Area */}
@@ -903,12 +932,12 @@ export default function App() {
           }}
           onToggleMobileSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
           sheetConfig={sheetConfig}
-          onOpenGoogleSheetsModal={() => setIsSheetsModalOpen(true)}
+          onOpenGoogleSheetsModal={handleOpenGoogleSheetsModal}
           onQuickSyncSheets={handleQuickSyncSheets}
           isSyncingSheets={isSyncingSheets}
           currentUser={currentUser}
           onLogout={handleLogout}
-          onOpenManagePins={() => setIsManagePinsOpen(true)}
+          onOpenManagePins={currentUser?.role === 'admin' ? handleOpenManagePins : undefined}
         />
 
         {/* Executive Dashboard & Claims Sections */}
@@ -1058,8 +1087,8 @@ export default function App() {
         currentClaimsCount={claims.length}
       />
 
-      {/* Manage PINs Modal */}
-      {currentUser && (
+      {/* Manage PINs Modal - Strictly Admin Only */}
+      {currentUser && currentUser.role === 'admin' && (
         <ManagePinsModal
           isOpen={isManagePinsOpen}
           onClose={() => setIsManagePinsOpen(false)}

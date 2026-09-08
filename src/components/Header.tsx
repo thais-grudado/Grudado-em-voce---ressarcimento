@@ -308,17 +308,19 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                 </div>
 
-                {/* Manage PINs Button (Visible for all or admin) */}
-                <button
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    if (onOpenManagePins) onOpenManagePins();
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:text-[#253746] hover:bg-slate-100 rounded-xl transition cursor-pointer flex items-center gap-2.5"
-                >
-                  <KeyRound className="w-4 h-4 text-[#05C3DE]" />
-                  <span>Gerenciar PINs da Equipe</span>
-                </button>
+                {/* Manage PINs Button (Only for Admin) */}
+                {permissions?.canManagePins && (
+                  <button
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      if (onOpenManagePins) onOpenManagePins();
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:text-[#253746] hover:bg-slate-100 rounded-xl transition cursor-pointer flex items-center gap-2.5"
+                  >
+                    <KeyRound className="w-4 h-4 text-[#05C3DE]" />
+                    <span>Gerenciar PINs da Equipe</span>
+                  </button>
+                )}
 
                 {/* Logout / Switch User */}
                 <button
