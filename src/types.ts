@@ -30,7 +30,7 @@ export type ProblemType =
 
 export type ResolutionStatus = 'Em análise' | 'Sim' | 'Não';
 
-export type RefundStatus = 'Pendente' | 'Pago' | 'Negado';
+export type RefundStatus = 'Pendente' | 'Pago' | 'Negado' | 'Não se aplica';
 
 export interface Claim {
   id: string;
@@ -48,6 +48,8 @@ export interface Claim {
   refundStatus: RefundStatus;
   monthYear: string; // e.g. 'agosto/2026', 'setembro/2026'
   protocolNumber?: string;
+  ticketStatus?: string; // Status da ocorrência/chamado (ex: "Em análise", "Entregue com atraso", "Aguardando transportadora", etc.)
+  isRefundEligible?: boolean; // Indica se é plausível de ressarcimento (false quando é apenas acompanhamento de atraso/rastreio)
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -61,9 +63,10 @@ export interface FilterState {
   problemType: string;
   refundStatus: string;
   resolution: string;
+  ticketStatus?: string;
   monthYear: string;
   slaFilter: 'all' | 'overdue' | 'due_today' | 'on_track';
-  tab: 'all' | 'pending' | 'overdue' | 'paid' | 'denied';
+  tab: 'all' | 'pending' | 'overdue' | 'paid' | 'denied' | 'not_applicable';
 }
 
 export interface ClaimStats {
@@ -75,9 +78,11 @@ export interface ClaimStats {
   paidCount: number;
   deniedAmount: number;
   deniedCount: number;
+  notApplicableCount: number;
+  notApplicableAmount: number;
   overdueCount: number;
   dueTodayCount: number;
-  recoveryRate: number; // percentage (paid / total)
+  recoveryRate: number; // percentage (paid / total eligible)
   carrierDistribution: {
     name: string;
     count: number;

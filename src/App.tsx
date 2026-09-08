@@ -11,7 +11,7 @@ import { QuickCobranceModal } from './components/QuickCobranceModal';
 import { ImportExportModal } from './components/ImportExportModal';
 import { GoogleSheetsModal } from './components/GoogleSheetsModal';
 import { fetchGoogleSheetCSV, parseClaimsFromCSV, normalizeCarrierName } from './services/googleSheetsService';
-import { exportClaimsToCSV, computeSLAStatus } from './utils/formatters';
+import { exportClaimsToCSV, computeSLAStatus, normalizeMonthYearKey } from './utils/formatters';
 
 const STORAGE_KEY = 'grudado_em_voce_ressarcimentos_v1';
 const SHEETS_CONFIG_KEY = 'grudado_em_voce_sheets_config_v1';
@@ -23,51 +23,17 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed: Claim[] = JSON.parse(saved);
-        // Correct order 61076, 57890 or similar records with real spreadsheet values
-        return parsed.map((c) => {
-          if (c.orderNumber && c.orderNumber.includes('61076')) {
-            return {
-              ...c,
-              orderNumber: '61076',
-              trackingCode: '888030881344028',
-              carrier: 'J&T',
-              invoiceNumber: '23655',
-              shippingDate: '2026-08-19',
-              ticketDate: '2026-08-19',
-              amount: 45.49,
-              estimatedReturnDate: '2026-08-26',
-              problemType: 'Avaria',
-              slaDays: 5,
-              resolution: 'Sim',
-              refundStatus: 'Pendente',
-              monthYear: 'agosto/2026',
-            };
-          }
-          if (c.orderNumber && c.orderNumber.includes('57890')) {
-            return {
-              ...c,
-              orderNumber: '57890',
-              trackingCode: 'AD604025375BR',
-              carrier: 'Correios',
-              invoiceNumber: '25123',
-              monthYear: 'julho/2026',
-              ticketDate: '2026-07-10',
-              estimatedReturnDate: '2026-07-15',
-              shippingDate: '2026-07-02',
-              problemType: 'Não localizado',
-              amount: 54.48,
-              resolution: 'Sim',
-              refundStatus: 'Pendente',
-            };
-          }
-          if (c.carrier) {
-            return {
-              ...c,
-              carrier: normalizeCarrierName(c.carrier),
-            };
-          }
-          return c;
-        });
+        // If storage contains the obsolete 10 mock items from previous versions (e.g. orderNumber '1' or '4' with R$ 876)
+        const hasLegacyMock = parsed.some(
+          (c) => c.id === 'claim-1' || (c.orderNumber === '1' && c.amount === 20) || (c.orderNumber === '4' && c.amount === 876)
+        );
+        if (!hasLegacyMock && parsed.length > 0) {
+          // Return user's actual saved records, preserving every edit/status change
+          return parsed.map((c) => ({
+            ...c,
+            carrier: c.carrier ? normalizeCarrierName(c.carrier) : c.carrier,
+          }));
+        }
       }
     } catch (e) {
       console.error('Error loading claims from storage:', e);
@@ -328,6 +294,44 @@ export default function App() {
     }
   };
 
+  // Check URL query parameters for cross-browser sheet sharing (?sheet=...)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const sheetUrlParam = params.get('sheet');
+      if (sheetUrlParam && sheetUrlParam.trim()) {
+        const cleanUrl = sheetUrlParam.trim();
+        setSheetConfig((prev) => ({
+          ...prev,
+          url: cleanUrl,
+          autoSync: true,
+        }));
+        setIsSyncingSheets(true);
+        fetchGoogleSheetCSV(cleanUrl)
+          .then((csvText) => {
+            const parsed = parseClaimsFromCSV(csvText);
+            if (parsed.claims.length > 0) {
+              handleSyncClaims(parsed.claims, 'merge');
+              setSheetConfig((prev) => ({
+                ...prev,
+                lastSyncTime: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                lastSyncStatus: 'success',
+                lastSyncCount: parsed.claims.length,
+              }));
+            }
+          })
+          .catch((err) => {
+            console.warn('Auto-sync from sheet query param failed:', err?.message);
+          })
+          .finally(() => {
+            setIsSyncingSheets(false);
+          });
+      }
+    } catch (e) {
+      // benign URL parse fallback
+    }
+  }, []);
+
   // Auto-sync timer (e.g. every 2 min when active)
   useEffect(() => {
     if (!sheetConfig.url || !sheetConfig.autoSync) return;
@@ -352,6 +356,8 @@ export default function App() {
     let paidCount = 0;
     let deniedAmount = 0;
     let deniedCount = 0;
+    let notApplicableCount = 0;
+    let notApplicableAmount = 0;
     let overdueCount = 0;
     let dueTodayCount = 0;
 
@@ -367,12 +373,14 @@ export default function App() {
 
     const monthMap: Record<
       string,
-      { count: number; totalAmount: number; paidAmount: number; pendingAmount: number }
+      { key: string; monthYear: string; count: number; totalAmount: number; paidAmount: number; pendingAmount: number }
     > = {};
 
     claims.forEach((claim) => {
       const amt = Number(claim.amount) || 0;
       totalAmount += amt;
+
+      const isNonRefundable = claim.refundStatus === 'Não se aplica' || claim.isRefundEligible === false;
 
       if (claim.refundStatus === 'Pago') {
         paidAmount += amt;
@@ -380,6 +388,9 @@ export default function App() {
       } else if (claim.refundStatus === 'Negado') {
         deniedAmount += amt;
         deniedCount += 1;
+      } else if (isNonRefundable) {
+        notApplicableAmount += amt;
+        notApplicableCount += 1;
       } else {
         pendingAmount += amt;
         pendingCount += 1;
@@ -398,7 +409,7 @@ export default function App() {
       carrierMap[carrierName].count += 1;
       carrierMap[carrierName].totalAmount += amt;
       if (claim.refundStatus === 'Pago') carrierMap[carrierName].paidAmount += amt;
-      if (claim.refundStatus === 'Pendente') carrierMap[carrierName].pendingAmount += amt;
+      if (claim.refundStatus === 'Pendente' && !isNonRefundable) carrierMap[carrierName].pendingAmount += amt;
 
       // Problem breakdown
       const probName = claim.problemType || 'Outros';
@@ -408,15 +419,22 @@ export default function App() {
       problemMap[probName].count += 1;
       problemMap[probName].totalAmount += amt;
 
-      // Monthly breakdown
-      const mName = claim.monthYear || 'setembro/2026';
-      if (!monthMap[mName]) {
-        monthMap[mName] = { count: 0, totalAmount: 0, paidAmount: 0, pendingAmount: 0 };
+      // Monthly breakdown normalized chronologically
+      const norm = normalizeMonthYearKey(claim.monthYear, claim.ticketDate || claim.shippingDate);
+      if (!monthMap[norm.key]) {
+        monthMap[norm.key] = {
+          key: norm.key,
+          monthYear: norm.label,
+          count: 0,
+          totalAmount: 0,
+          paidAmount: 0,
+          pendingAmount: 0,
+        };
       }
-      monthMap[mName].count += 1;
-      monthMap[mName].totalAmount += amt;
-      if (claim.refundStatus === 'Pago') monthMap[mName].paidAmount += amt;
-      if (claim.refundStatus === 'Pendente') monthMap[mName].pendingAmount += amt;
+      monthMap[norm.key].count += 1;
+      monthMap[norm.key].totalAmount += amt;
+      if (claim.refundStatus === 'Pago') monthMap[norm.key].paidAmount += amt;
+      if (claim.refundStatus === 'Pendente' && !isNonRefundable) monthMap[norm.key].pendingAmount += amt;
     });
 
     const carrierDistribution = Object.entries(carrierMap).map(([name, data]) => ({
@@ -434,15 +452,13 @@ export default function App() {
       percentage: totalCount > 0 ? (data.count / totalCount) * 100 : 0,
     }));
 
-    const monthlyEvolution = Object.entries(monthMap).map(([monthYear, data]) => ({
-      monthYear,
-      count: data.count,
-      totalAmount: data.totalAmount,
-      paidAmount: data.paidAmount,
-      pendingAmount: data.pendingAmount,
-    }));
+    // Chronologically sorted monthly evolution
+    const monthlyEvolution = Object.values(monthMap)
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .map(({ key, ...data }) => data);
 
-    const recoveryRate = totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0;
+    const eligibleAmount = paidAmount + pendingAmount + deniedAmount;
+    const recoveryRate = eligibleAmount > 0 ? (paidAmount / eligibleAmount) * 100 : 0;
 
     return {
       totalCount,
@@ -453,6 +469,8 @@ export default function App() {
       paidCount,
       deniedAmount,
       deniedCount,
+      notApplicableCount,
+      notApplicableAmount,
       overdueCount,
       dueTodayCount,
       recoveryRate,
@@ -466,9 +484,10 @@ export default function App() {
   const filteredClaims = useMemo(() => {
     return claims.filter((claim) => {
       // Tab filter
-      if (filters.tab === 'pending' && claim.refundStatus !== 'Pendente') return false;
+      if (filters.tab === 'pending' && (claim.refundStatus !== 'Pendente' || claim.isRefundEligible === false)) return false;
       if (filters.tab === 'paid' && claim.refundStatus !== 'Pago') return false;
       if (filters.tab === 'denied' && claim.refundStatus !== 'Negado') return false;
+      if (filters.tab === 'not_applicable' && claim.refundStatus !== 'Não se aplica' && claim.isRefundEligible !== false) return false;
       if (filters.tab === 'overdue') {
         const sla = computeSLAStatus(claim);
         if (sla.status !== 'overdue') return false;
@@ -490,6 +509,7 @@ export default function App() {
         const matchesTracking = (claim.trackingCode || '').toLowerCase().includes(query);
         const matchesInvoice = (claim.invoiceNumber || '').toLowerCase().includes(query);
         const matchesProtocol = (claim.protocolNumber || '').toLowerCase().includes(query);
+        const matchesTicketStatus = (claim.ticketStatus || '').toLowerCase().includes(query);
         const matchesNotes = (claim.notes || '').toLowerCase().includes(query);
         const matchesCarrier = (claim.carrier || '').toLowerCase().includes(query);
         if (
@@ -497,6 +517,7 @@ export default function App() {
           !matchesTracking &&
           !matchesInvoice &&
           !matchesProtocol &&
+          !matchesTicketStatus &&
           !matchesNotes &&
           !matchesCarrier
         ) {

@@ -11,7 +11,9 @@ import {
   Clock,
   CheckCircle2,
   Ban,
-  Layers
+  Layers,
+  Tag,
+  HelpCircle
 } from 'lucide-react';
 import { Claim, FilterState, ResolutionStatus, RefundStatus } from '../types';
 import { formatBRL, formatDateBR, computeSLAStatus } from '../utils/formatters';
@@ -142,6 +144,17 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
               <Ban className="w-3.5 h-3.5" />
               <span>Recusados</span>
             </button>
+            <button
+              onClick={() => onFilterChange({ tab: 'not_applicable' })}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer whitespace-nowrap ${
+                filters.tab === 'not_applicable'
+                  ? 'bg-slate-800 text-white shadow-2xs'
+                  : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-slate-500" />
+              <span>Apenas Atrasos / Sem Cobrança</span>
+            </button>
           </div>
         </div>
 
@@ -229,6 +242,17 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
                 className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-medium transition cursor-pointer"
               >
                 Marcar Pendente
+              </button>
+              <button
+                onClick={() => {
+                  if (onBatchUpdateStatus) {
+                    onBatchUpdateStatus(selectedIds, 'Não se aplica', 'Em análise');
+                    setSelectedIds([]);
+                  }
+                }}
+                className="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded text-xs font-medium transition cursor-pointer"
+              >
+                Não se aplica
               </button>
               <button
                 onClick={() => {
@@ -348,14 +372,38 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
                       </span>
                     </td>
 
-                    {/* Problem */}
-                    <td className="px-5 py-3.5 whitespace-nowrap text-slate-600">
-                      <span>{claim.problemType}</span>
+                    {/* Problem & Ticket Status */}
+                    <td className="px-5 py-3.5 whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        <span className="font-medium text-slate-800">{claim.problemType}</span>
+                        {claim.ticketStatus && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60 w-fit">
+                            <Tag className="w-2.5 h-2.5 text-blue-500" />
+                            {claim.ticketStatus}
+                          </span>
+                        )}
+                        {(claim.refundStatus === 'Não se aplica' || claim.isRefundEligible === false) && (
+                          <span className="text-[10px] text-slate-500 font-normal">
+                            Sem ressarcimento
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Amount */}
-                    <td className="px-5 py-3.5 whitespace-nowrap font-semibold text-slate-900">
-                      {formatBRL(claim.amount)}
+                    <td className="px-5 py-3.5 whitespace-nowrap">
+                      {claim.refundStatus === 'Não se aplica' || claim.isRefundEligible === false ? (
+                        <div>
+                          <span className="font-medium text-slate-400 line-through text-xs block">
+                            {formatBRL(claim.amount)}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-medium">Apenas atraso</span>
+                        </div>
+                      ) : (
+                        <span className="font-semibold text-slate-900">
+                          {formatBRL(claim.amount)}
+                        </span>
+                      )}
                     </td>
 
                     {/* Ticket Date */}
@@ -417,12 +465,15 @@ export const ClaimsTable: React.FC<ClaimsTableProps> = ({
                             ? 'bg-emerald-100 text-emerald-700'
                             : claim.refundStatus === 'Negado'
                             ? 'bg-rose-100 text-rose-700'
+                            : claim.refundStatus === 'Não se aplica'
+                            ? 'bg-slate-100 text-slate-700 border border-slate-300'
                             : 'bg-amber-100 text-amber-700'
                         }`}
                       >
                         <option value="Pendente" className="bg-white text-slate-800 font-normal">Pendente</option>
                         <option value="Pago" className="bg-white text-slate-800 font-normal">Pago</option>
                         <option value="Negado" className="bg-white text-slate-800 font-normal">Negado</option>
+                        <option value="Não se aplica" className="bg-white text-slate-800 font-normal">Não se aplica</option>
                       </select>
                     </td>
 

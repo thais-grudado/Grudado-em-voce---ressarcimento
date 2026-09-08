@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, FileText } from 'lucide-react';
+import { X, Save, FileText, HelpCircle, CheckCircle2, Clock, Ban, Tag } from 'lucide-react';
 import { Claim, CarrierName, ProblemType, ResolutionStatus, RefundStatus } from '../types';
 import { CARRIERS, PROBLEM_TYPES } from '../data/initialData';
 import { addDaysToDate, getMonthYearFromDate } from '../utils/formatters';
@@ -10,6 +10,16 @@ interface ClaimModalProps {
   onSave: (claimData: Omit<Claim, 'id' | 'createdAt' | 'updatedAt'>, editId?: string) => void;
   editClaim?: Claim | null;
 }
+
+const COMMON_TICKET_STATUSES = [
+  'Aberto',
+  'Em análise na transportadora',
+  'Aguardando transportadora',
+  'Cobrado / Reclamado',
+  'Entregue com atraso',
+  'Extravio confirmado',
+  'Finalizado',
+];
 
 export const ClaimModal: React.FC<ClaimModalProps> = ({
   isOpen,
@@ -30,6 +40,9 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
   const [estimatedReturnDate, setEstimatedReturnDate] = useState('');
   const [resolution, setResolution] = useState<ResolutionStatus>('Em análise');
   const [refundStatus, setRefundStatus] = useState<RefundStatus>('Pendente');
+  const [isRefundEligible, setIsRefundEligible] = useState<boolean>(true);
+  const [ticketStatus, setTicketStatus] = useState<string>('Em análise');
+  const [customStatusInput, setCustomStatusInput] = useState<string>('');
   const [protocolNumber, setProtocolNumber] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -49,6 +62,14 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
       setEstimatedReturnDate(editClaim.estimatedReturnDate);
       setResolution(editClaim.resolution);
       setRefundStatus(editClaim.refundStatus);
+
+      const eligible = editClaim.isRefundEligible !== undefined
+        ? editClaim.isRefundEligible
+        : editClaim.refundStatus !== 'Não se aplica';
+      setIsRefundEligible(eligible);
+
+      setTicketStatus(editClaim.ticketStatus || (eligible ? 'Em análise' : 'Atraso na entrega'));
+      setCustomStatusInput('');
       setProtocolNumber(editClaim.protocolNumber || '');
       setNotes(editClaim.notes || '');
     } else {
@@ -67,6 +88,9 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
       setEstimatedReturnDate(addDaysToDate(today, 5));
       setResolution('Em análise');
       setRefundStatus('Pendente');
+      setIsRefundEligible(true);
+      setTicketStatus('Em análise');
+      setCustomStatusInput('');
       setProtocolNumber('');
       setNotes('');
     }
@@ -99,6 +123,37 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
     }
   };
 
+  const handleProblemTypeChange = (newType: ProblemType) => {
+    setProblemType(newType);
+    if (newType === 'Atraso na entrega' && !editClaim) {
+      setTicketStatus('Atraso na entrega');
+    }
+  };
+
+  // Toggle plausibility of refund
+  const handlePlausibilityChange = (eligible: boolean) => {
+    setIsRefundEligible(eligible);
+    if (!eligible) {
+      setRefundStatus('Não se aplica');
+      if (ticketStatus === 'Em análise') {
+        setTicketStatus('Atraso na entrega');
+      }
+    } else {
+      if (refundStatus === 'Não se aplica') {
+        setRefundStatus('Pendente');
+      }
+    }
+  };
+
+  const handleRefundStatusSelect = (st: RefundStatus) => {
+    setRefundStatus(st);
+    if (st === 'Não se aplica') {
+      setIsRefundEligible(false);
+    } else {
+      setIsRefundEligible(true);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -110,6 +165,7 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
 
     const parsedAmount = parseFloat(amount.replace(',', '.')) || 0;
     const finalMonthYear = monthYear.trim() || getMonthYearFromDate(ticketDate) || 'julho/2026';
+    const finalTicketStatus = customStatusInput.trim() || ticketStatus || 'Em análise';
 
     onSave(
       {
@@ -125,6 +181,8 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
         estimatedReturnDate: estimatedReturnDate || addDaysToDate(ticketDate, slaDays),
         resolution,
         refundStatus,
+        ticketStatus: finalTicketStatus,
+        isRefundEligible,
         monthYear: finalMonthYear,
         protocolNumber: protocolNumber.trim(),
         notes: notes.trim(),
@@ -239,16 +297,20 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
-                Valor Total (R$) *
+                Valor {isRefundEligible ? 'Total (R$) *' : 'do Pedido (R$)'}
               </label>
               <input
                 type="text"
-                required
                 placeholder="0,00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="w-full px-3 py-1.5 bg-white border border-slate-200 focus:border-blue-500 rounded-md text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
               />
+              {!isRefundEligible && (
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  Não gerará pendência de indenização.
+                </span>
+              )}
             </div>
           </div>
 
@@ -260,7 +322,7 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
               </label>
               <select
                 value={problemType}
-                onChange={(e) => setProblemType(e.target.value)}
+                onChange={(e) => handleProblemTypeChange(e.target.value as ProblemType)}
                 className="w-full px-3 py-1.5 bg-white border border-slate-200 focus:border-blue-500 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
               >
                 {PROBLEM_TYPES.map((pt) => (
@@ -341,6 +403,109 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
             </div>
           </div>
 
+          {/* Destaque: Plausibilidade de Ressarcimento */}
+          <div className="p-3.5 bg-slate-50/90 rounded-xl border border-slate-200 space-y-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5 text-blue-600" />
+                  Plausível de Ressarcimento?
+                </span>
+                <p className="text-[11px] text-slate-500">
+                  Defina se haverá cobrança de indenização ou se é apenas ticket de atraso / acompanhamento.
+                </p>
+              </div>
+
+              {/* Segmented Buttons */}
+              <div className="flex items-center gap-1.5 shrink-0 bg-white p-1 rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => handlePlausibilityChange(true)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                    isRefundEligible
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Sim (Cobrar)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePlausibilityChange(false)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                    !isRefundEligible
+                      ? 'bg-slate-700 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Ban className="w-3.5 h-3.5" />
+                  Não (Apenas atraso)
+                </button>
+              </div>
+            </div>
+
+            {!isRefundEligible && (
+              <div className="p-2 bg-slate-100 rounded-lg text-xs text-slate-600 flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <span>
+                  <strong>Apenas acompanhamento:</strong> O valor não será somado aos valores pendentes ou cobrados no dashboard financeiro.
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Campo para Adicionar / Escolher Status do Chamado */}
+          <div className="p-3.5 bg-blue-50/40 rounded-xl border border-blue-100 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-blue-600" />
+                Status do Chamado / Ocorrência
+              </label>
+              <span className="text-[11px] text-blue-600 font-medium">
+                Escolha uma opção ou digite um status livre
+              </span>
+            </div>
+
+            {/* Quick Status Chips */}
+            <div className="flex flex-wrap gap-1.5">
+              {COMMON_TICKET_STATUSES.map((st) => {
+                const isSelected = (customStatusInput ? customStatusInput === st : ticketStatus === st);
+                return (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => {
+                      setTicketStatus(st);
+                      setCustomStatusInput('');
+                    }}
+                    className={`px-2.5 py-1 text-xs rounded-lg border transition cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-600 text-white border-blue-600 font-semibold shadow-2xs'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {st}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Custom status input */}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                placeholder="Ou digite outro status personalizado (Ex: Aguardando laudo, Sinistro em apuração...)"
+                value={customStatusInput}
+                onChange={(e) => {
+                  setCustomStatusInput(e.target.value);
+                  setTicketStatus(e.target.value);
+                }}
+                className="w-full px-3 py-1.5 bg-white border border-slate-200 focus:border-blue-500 rounded-md text-xs outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+            </div>
+          </div>
+
           {/* Row 5: Resolvido & Ressarcimento */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -369,18 +534,20 @@ export const ClaimModal: React.FC<ClaimModalProps> = ({
               <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
                 Status do Ressarcimento
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['Pendente', 'Pago', 'Negado'] as RefundStatus[]).map((rf) => (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {(['Pendente', 'Pago', 'Negado', 'Não se aplica'] as RefundStatus[]).map((rf) => (
                   <button
                     key={rf}
                     type="button"
-                    onClick={() => setRefundStatus(rf)}
-                    className={`py-1.5 text-xs font-bold rounded-md border transition cursor-pointer ${
+                    onClick={() => handleRefundStatusSelect(rf)}
+                    className={`py-1.5 px-1 text-[11px] font-bold rounded-md border transition cursor-pointer text-center whitespace-nowrap ${
                       refundStatus === rf
                         ? rf === 'Pago'
                           ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
                           : rf === 'Negado'
                           ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                          : rf === 'Não se aplica'
+                          ? 'bg-slate-700 text-white border-slate-700 shadow-2xs'
                           : 'bg-amber-500 text-white border-amber-500 shadow-2xs'
                         : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                     }`}

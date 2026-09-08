@@ -10,7 +10,9 @@ import {
   Clock, 
   FileSpreadsheet,
   HelpCircle,
-  Play
+  Play,
+  Share2,
+  Copy
 } from 'lucide-react';
 import { GoogleSheetConfig, Claim } from '../types';
 import { 
@@ -52,8 +54,21 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   } | null>(null);
 
   const [activeTab, setActiveTab] = useState<'config' | 'tutorial'>('config');
+  const [copiedLink, setCopiedLink] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleCopyShareLink = () => {
+    if (!url.trim()) return;
+    try {
+      const shareUrl = `${window.location.origin}${window.location.pathname}?sheet=${encodeURIComponent(url.trim())}`;
+      navigator.clipboard.writeText(shareUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 3000);
+    } catch (e) {
+      console.warn('Clipboard error:', e);
+    }
+  };
 
   // Handles test and fetch
   const handleTestAndSync = async (shouldApply = false) => {
@@ -236,6 +251,32 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                 <p className="text-[11px] text-slate-500">
                   Cole o link normal do Google Sheets ou o link publicado na web (CSV). Certifique-se de que o acesso está como <strong>"Qualquer pessoa com o link pode ver"</strong>.
                 </p>
+
+                {url.trim() && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-cyan-50/70 border border-cyan-200 rounded-xl text-xs text-cyan-900">
+                    <div className="flex items-center gap-2">
+                      <Share2 className="w-4 h-4 text-[#05C3DE] shrink-0" />
+                      <span>Abrir em <strong>outro navegador</strong> ou dispositivo com essa mesma planilha conectada:</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyShareLink}
+                      className="px-2.5 py-1.5 bg-white border border-cyan-300 hover:bg-cyan-100/60 text-cyan-900 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs shrink-0"
+                    >
+                      {copiedLink ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="text-emerald-700">Link Copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-[#05C3DE]" />
+                          <span>Copiar Link de Acesso</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Sync Options Grid */}

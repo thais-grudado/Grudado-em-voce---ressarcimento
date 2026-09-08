@@ -30,7 +30,7 @@ interface DashboardMetricsProps {
   onSelectCarrierFilter?: (carrier: string) => void;
   selectedProblemFilter?: string;
   onSelectProblemFilter?: (problem: string) => void;
-  onTabChange?: (tab: 'all' | 'pending' | 'overdue' | 'paid' | 'denied') => void;
+  onTabChange?: (tab: 'all' | 'pending' | 'overdue' | 'paid' | 'denied' | 'not_applicable') => void;
   showCharts?: boolean;
   onToggleCharts?: () => void;
 }
@@ -438,9 +438,28 @@ export const DashboardMetrics: React.FC<DashboardMetricsProps> = ({
             </ResponsiveContainer>
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-500 mt-2 border-t border-slate-100 pt-2.5">
-            <span>Agosto: {formatBRL(160)}</span>
-            <span className="text-blue-600 font-bold">Setembro: {formatBRL(4374)}</span>
+          <div className="mt-3 border-t border-slate-100 pt-2.5">
+            {stats.monthlyEvolution.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center">Nenhum dado por competência registrado</p>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  {stats.monthlyEvolution.map((m) => (
+                    <div key={m.monthYear} className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200/70">
+                      <span className="capitalize font-medium text-slate-700">{m.monthYear}:</span>
+                      <span className="font-bold text-slate-900">{formatBRL(m.totalAmount)}</span>
+                      <span className="text-[10px] text-slate-500 font-medium">({m.count} {m.count === 1 ? 'ped.' : 'peds.'})</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-right ml-auto font-medium">
+                  <span className="text-slate-500 mr-1">Total:</span>
+                  <span className="font-bold text-cyan-700 text-sm">
+                    {formatBRL(stats.monthlyEvolution.reduce((acc, curr) => acc + curr.totalAmount, 0))}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -58,6 +58,88 @@ export function addDaysToDate(dateStr: string, days: number): string {
 }
 
 /**
+ * Normalizes month/year into a chronological key (YYYY-MM) and standard label (mes/ano)
+ */
+export interface NormalizedMonthYear {
+  key: string;      // e.g. "2026-07", "2026-08" (for chronological sorting)
+  label: string;    // e.g. "julho/2026", "agosto/2026"
+  year: number;     // e.g. 2026
+  month: number;    // 1-12
+}
+
+export function normalizeMonthYearKey(rawMonthYear?: string, fallbackDate?: string): NormalizedMonthYear {
+  const monthNames = [
+    'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+  ];
+
+  let year = 2026;
+  let month = 0; // 1-12
+
+  if (rawMonthYear) {
+    const clean = rawMonthYear.trim().toLowerCase();
+
+    // Check if numeric format like "08/2026", "8/2026", "08/26", "08-2026"
+    const numMatch = clean.match(/^(\d{1,2})[\/\-](\d{2,4})$/);
+    if (numMatch) {
+      month = parseInt(numMatch[1], 10);
+      let y = parseInt(numMatch[2], 10);
+      if (y < 100) y += 2000;
+      year = y;
+    } else {
+      // Check for month name in string, e.g. "agosto/2026", "agosto", "julho/2026"
+      for (let i = 0; i < monthNames.length; i++) {
+        if (clean.includes(monthNames[i])) {
+          month = i + 1;
+          break;
+        }
+      }
+      // Check abbreviations like "jul", "ago", "set"
+      if (month === 0) {
+        const shortMonths: Record<string, number> = {
+          jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6,
+          jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12
+        };
+        for (const [sM, val] of Object.entries(shortMonths)) {
+          if (clean.includes(sM)) {
+            month = val;
+            break;
+          }
+        }
+      }
+      // Look for 4-digit year
+      const yMatch = clean.match(/\b(20\d\d)\b/);
+      if (yMatch) {
+        year = parseInt(yMatch[1], 10);
+      }
+    }
+  }
+
+  // If month was not found in rawMonthYear, derive from fallbackDate
+  if (month === 0 && fallbackDate) {
+    const iso = parseDateBRToISO(fallbackDate);
+    const parts = iso.split('-');
+    if (parts.length >= 2) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      if (!isNaN(y) && y > 2000) year = y;
+      if (!isNaN(m) && m >= 1 && m <= 12) month = m;
+    }
+  }
+
+  if (month < 1 || month > 12) month = 8; // fallback to agosto
+
+  const name = monthNames[month - 1];
+  const padMonth = String(month).padStart(2, '0');
+  return {
+    key: `${year}-${padMonth}`,
+    label: `${name}/${year}`,
+    year,
+    month,
+  };
+}
+
+/**
  * Get Month/Year name in Portuguese (e.g. "agosto/2026", "setembro/2026")
  */
 export function getMonthYearFromDate(dateStr: string): string {
